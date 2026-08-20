@@ -844,6 +844,27 @@ export function useCollection() {
     linkElement.click();
   };
 
+  const processJsonUpload = (file: File): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const content = e.target?.result as string;
+          const parsed = JSON.parse(content);
+          if (Array.isArray(parsed)) {
+            setGames(parsed);
+            resolve();
+          } else {
+            reject(new Error("Formato inválido. O arquivo JSON deve ser um array de jogos."));
+          }
+        } catch (error) {
+          reject(error);
+        }
+      };
+      reader.readAsText(file);
+    });
+  };
+
   return {
     games,
     columnMapping,
@@ -856,6 +877,7 @@ export function useCollection() {
     clearCollection,
     exportToExcel,
     exportToJson,
+    processJsonUpload,
     addGame,
     editGame,
     deleteGame,

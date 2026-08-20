@@ -15,7 +15,7 @@ import './index.css';
 import './components.css';
 
 function App() {
-  const { games, columnMapping, setColumnMapping, isLoading, ludoToken, setLudoToken, processExcelUpload, fetchBGGCollection, fetchLudoCollection, clearCollection, exportToExcel, exportToJson, addGame, editGame, deleteGame, fetchBGGDataForGames, fetchLudoDataForGames, fetchComparaDataForGames } = useCollection();
+  const { games, columnMapping, setColumnMapping, isLoading, ludoToken, setLudoToken, processExcelUpload, fetchBGGCollection, fetchLudoCollection, clearCollection, exportToExcel, exportToJson, processJsonUpload, addGame, editGame, deleteGame, fetchBGGDataForGames, fetchLudoDataForGames, fetchComparaDataForGames } = useCollection();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('Todos');
   const [rankFilter, setRankFilter] = useState('Todos');
@@ -121,6 +121,18 @@ function App() {
     }
   };
 
+  const handleJsonUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const file = e.target.files[0];
+      e.target.value = '';
+      try {
+        await processJsonUpload(file);
+      } catch (error) {
+        alert('Erro ao processar arquivo. Certifique-se de que é um JSON válido exportado pelo sistema.');
+      }
+    }
+  };
+
   // Extrair lista de status únicos
   const availableStatuses = useMemo(() => {
     const statuses = new Set(games.map(g => g.status));
@@ -195,15 +207,18 @@ function App() {
 
       if (!isNaN(spendNum)) acc.totalGasto += spendNum;
 
-      if (isOwned && !isNaN(valueNum)) {
-        acc.valorColecao += valueNum;
+      if (isOwned) {
+        acc.totalInCollection += 1;
+        if (!isNaN(valueNum)) acc.valorColecao += valueNum;
       }
       
-      if (isSold && !isNaN(soldNum)) {
-        acc.totalVendido += soldNum;
+      if (isSold) {
+        acc.totalSold += 1;
+        if (!isNaN(soldNum)) acc.totalVendido += soldNum;
+        if (!isNaN(spendNum)) acc.gastoVendido += spendNum;
       }
       return acc;
-    }, { totalGasto: 0, valorColecao: 0, totalVendido: 0 });
+    }, { totalGasto: 0, valorColecao: 0, totalVendido: 0, totalInCollection: 0, totalSold: 0, gastoVendido: 0 });
   }, [games]);
 
   if (isLoading) {
@@ -282,6 +297,10 @@ function App() {
               <Upload size={16} /> Excel
             </button>
             <input id="excel-upload" type="file" accept=".xlsx, .xls, .csv" onChange={handleFileUpload} style={{display: 'none'}} />
+            <button className="btn" onClick={() => document.getElementById('json-upload')?.click()} title="Importar JSON" style={{ padding: '0.5rem 0.75rem', fontSize: '0.85rem' }}>
+              <FileJson size={16} /> JSON
+            </button>
+            <input id="json-upload" type="file" accept=".json" onChange={handleJsonUpload} style={{display: 'none'}} />
           </div>
 
           {games.length > 0 && (
@@ -330,9 +349,13 @@ function App() {
               >
                 {showFinancials ? <EyeOff size={20} color="var(--text-muted)" /> : <Eye size={20} color="var(--text-muted)" />}
               </button>
-              <div className="stat-box" style={{flex: 1}}>
-                <div style={{color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '0.5rem'}}>Total de Jogos (Entradas)</div>
+              <div className="stat-box" style={{flex: 1, minWidth: '180px'}}>
+                <div style={{color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '0.5rem'}}>Total de Jogos</div>
                 <div style={{fontSize: '2rem', fontWeight: 700}}>{games.length}</div>
+                <div style={{fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '0.5rem', display: 'flex', justifyContent: 'space-between'}}>
+                  <span>Coleção: <strong style={{color: '#fff'}}>{totals.totalInCollection}</strong></span>
+                  <span>Vendido: <strong style={{color: '#fff'}}>{totals.totalSold}</strong></span>
+                </div>
               </div>
               <div className="stat-box" style={{flex: 1}}>
                 <div style={{color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '0.5rem'}}>Total Gasto</div>
@@ -346,10 +369,16 @@ function App() {
                   {showFinancials ? totals.valorColecao.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : 'R$ •••••'}
                 </div>
               </div>
-              <div className="stat-box" style={{flex: 1}}>
+              <div className="stat-box" style={{flex: 1, minWidth: '180px'}}>
                 <div style={{color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '0.5rem'}}>Valor Vendido</div>
                 <div style={{fontSize: '2rem', fontWeight: 700, color: '#60a5fa'}}>
                   {showFinancials ? totals.totalVendido.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : 'R$ •••••'}
+                </div>
+              </div>
+              <div className="stat-box" style={{flex: 1, minWidth: '180px'}}>
+                <div style={{color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '0.5rem'}}>Lucro (Vendidos)</div>
+                <div style={{fontSize: '2rem', fontWeight: 700, color: (totals.totalVendido - totals.gastoVendido) >= 0 ? '#10b981' : '#ef4444'}}>
+                  {showFinancials ? (totals.totalVendido - totals.gastoVendido).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : 'R$ •••••'}
                 </div>
               </div>
             </div>
