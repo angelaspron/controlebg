@@ -544,38 +544,43 @@ export function useCollection() {
       
       try {
         setIsLoading(true);
-        let currentPage = 1;
-        let hasMore = true;
         let allItems: any[] = [];
 
-        while (hasMore) {
-          const url = `/ludo-api/colecao?lista=colecao&rows=100&page=${currentPage}`;
-          
-          let res = await fetch(url, { headers: { 'Authorization': `Bearer ${ludoToken}` } });
-          let attempts = 0;
-          while (res.status === 429 && attempts < 5) {
-            await new Promise(r => setTimeout(r, 5000));
-            res = await fetch(url, { headers: { 'Authorization': `Bearer ${ludoToken}` } });
-            attempts++;
-          }
-          
-          if (!res.ok) {
-            throw new Error('Falha ao buscar coleção na Ludopedia.');
-          }
+        const listasParaBuscar = ['colecao', 'teve'];
 
-          const json = await res.json();
-          
-          if (json.colecao) {
-            const items = Array.isArray(json.colecao) ? json.colecao : [json.colecao];
-            allItems = [...allItems, ...items];
-            if (currentPage * 100 >= json.total) {
-              hasMore = false;
-            } else {
-              currentPage++;
-              await new Promise(r => setTimeout(r, 1000));
+        for (const lista of listasParaBuscar) {
+          let currentPage = 1;
+          let hasMore = true;
+
+          while (hasMore) {
+            const url = `/ludo-api/colecao?lista=${lista}&rows=100&page=${currentPage}`;
+            
+            let res = await fetch(url, { headers: { 'Authorization': `Bearer ${ludoToken}` } });
+            let attempts = 0;
+            while (res.status === 429 && attempts < 5) {
+              await new Promise(r => setTimeout(r, 5000));
+              res = await fetch(url, { headers: { 'Authorization': `Bearer ${ludoToken}` } });
+              attempts++;
             }
-          } else {
-            hasMore = false;
+            
+            if (!res.ok) {
+              throw new Error(`Falha ao buscar lista ${lista} na Ludopedia.`);
+            }
+
+            const json = await res.json();
+            
+            if (json.colecao) {
+              const items = Array.isArray(json.colecao) ? json.colecao : [json.colecao];
+              allItems = [...allItems, ...items];
+              if (currentPage * 100 >= json.total) {
+                hasMore = false;
+              } else {
+                currentPage++;
+                await new Promise(r => setTimeout(r, 1000));
+              }
+            } else {
+              hasMore = false;
+            }
           }
         }
         
