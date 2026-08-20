@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save } from 'lucide-react';
+import { X, Save, Info } from 'lucide-react';
 import type { ColumnMapping } from '../types';
 
 interface SettingsModalProps {
@@ -9,9 +9,10 @@ interface SettingsModalProps {
   onSave: (mapping: ColumnMapping) => void;
   ludoToken: string;
   setLudoToken: (token: string) => void;
+  onOpenHelp?: () => void;
 }
 
-export function SettingsModal({ isOpen, onClose, mapping, onSave, ludoToken, setLudoToken }: SettingsModalProps) {
+export function SettingsModal({ isOpen, onClose, mapping, onSave, ludoToken, setLudoToken, onOpenHelp }: SettingsModalProps) {
   const [localMapping, setLocalMapping] = useState<ColumnMapping>(mapping);
   const [localToken, setLocalToken] = useState<string>(ludoToken);
 
@@ -41,7 +42,7 @@ export function SettingsModal({ isOpen, onClose, mapping, onSave, ludoToken, set
       backgroundColor: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)',
       display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
     }}>
-      <div className="glass-panel animate-fade-in" style={{ width: '100%', maxWidth: '500px', padding: '2rem', position: 'relative' }}>
+      <div className="glass-panel animate-fade-in" style={{ width: '100%', maxWidth: '500px', padding: '2rem', position: 'relative', maxHeight: '90vh', overflowY: 'auto' }}>
         <button onClick={onClose} style={{
           position: 'absolute', top: '1rem', right: '1rem', background: 'transparent', 
           border: 'none', color: 'var(--text-muted)', cursor: 'pointer'
@@ -116,7 +117,12 @@ export function SettingsModal({ isOpen, onClose, mapping, onSave, ludoToken, set
 
           <div className="form-group" style={{ marginTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '1rem' }}>
             <h3 style={{ marginBottom: '1rem', fontSize: '1.1rem' }}>Credenciais API</h3>
-            <label>Ludopedia Access Token (Usuário)</label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              Ludopedia Access Token (Usuário)
+              <span title="Acesse ludopedia.com.br/aplicativos para solicitar o token de usuário" style={{ display: 'flex', alignItems: 'center', cursor: 'help' }}>
+                <Info size={16} color="var(--text-muted)" />
+              </span>
+            </label>
             <input
               type="text"
               className="search-input"
@@ -126,14 +132,26 @@ export function SettingsModal({ isOpen, onClose, mapping, onSave, ludoToken, set
             />
           </div>
 
-          <div className="modal-footer" style={{ marginTop: '1rem' }}>
-            <button type="button" className="btn" onClick={onClose}>
-              Cancelar
-            </button>
-            <button type="submit" className="btn btn-primary">
-              <Save size={18} />
-              Salvar Mapeamento
-            </button>
+          <div className="modal-footer" style={{ marginTop: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            {onOpenHelp && (
+              <button 
+                type="button" 
+                className="btn" 
+                onClick={onOpenHelp}
+                style={{ padding: '0.5rem 0.75rem', fontSize: '0.85rem', color: 'var(--accent)', borderColor: 'var(--accent)' }}
+              >
+                Ver Tutorial Inicial
+              </button>
+            )}
+            <div style={{ display: 'flex', gap: '1rem' }}>
+              <button type="button" className="btn" onClick={onClose}>
+                Cancelar
+              </button>
+              <button type="submit" className="btn btn-primary">
+                <Save size={18} />
+                Salvar Mapeamento
+              </button>
+            </div>
           </div>
         </form>
       </div>

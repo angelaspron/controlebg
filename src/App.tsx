@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Gamepad2, Upload, Trash2, Search, Plus, Settings, DownloadCloud, FileSpreadsheet, PieChart, FileJson, Eye, EyeOff } from 'lucide-react';
+import { Dices, Upload, Trash2, Search, Plus, Settings, DownloadCloud, FileSpreadsheet, PieChart, FileJson, Eye, EyeOff } from 'lucide-react';
 import { useCollection } from './hooks/useCollection';
 import { GameCard } from './components/GameCard';
 import { AddGameModal } from './components/AddGameModal';
@@ -8,6 +8,7 @@ import { SettingsModal } from './components/SettingsModal';
 import { BGGImportModal } from './components/BGGImportModal';
 import { LudoImportModal } from './components/LudoImportModal';
 import { ReportsModal } from './components/ReportsModal';
+import { HelpModal } from './components/HelpModal';
 import type { GameData } from './types';
 import { LoginScreen } from './components/LoginScreen';
 import './index.css';
@@ -30,16 +31,30 @@ function App() {
   const [showFinancials, setShowFinancials] = useState(true);
   const [username, setUsername] = useState<string | null>(() => localStorage.getItem('boardgame_manager_username'));
   const [isUpdating, setIsUpdating] = useState(false);
+  const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
 
   const handleLogin = (user: string) => {
     localStorage.setItem('boardgame_manager_username', user);
     setUsername(user);
+    
+    // Check if onboarding is needed
+    if (!localStorage.getItem('boardgame_manager_help_seen')) {
+      setIsHelpModalOpen(true);
+      localStorage.setItem('boardgame_manager_help_seen', 'true');
+    }
   };
 
   const handleLogout = () => {
     localStorage.removeItem('boardgame_manager_username');
     setUsername(null);
   };
+
+  useEffect(() => {
+    if (username && !localStorage.getItem('boardgame_manager_help_seen')) {
+      setIsHelpModalOpen(true);
+      localStorage.setItem('boardgame_manager_help_seen', 'true');
+    }
+  }, [username]);
 
   const toggleSelection = (id: string) => {
     setSelectedGameIds(prev => {
@@ -184,19 +199,31 @@ function App() {
   return (
     <>
     {isUpdating && (
-      <div className="modal-overlay" style={{zIndex: 9999}}>
-        <div className="glass-panel animate-scale-in" style={{textAlign: 'center', padding: '3rem', minWidth: '300px', display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
-          <Gamepad2 size={48} color="var(--accent)" style={{marginBottom: '1rem', animation: 'pulse 2s infinite'}} />
-          <h2 style={{margin: '0 0 1rem'}}>Atualizando Dados</h2>
-          <p style={{color: 'var(--text-muted)', margin: 0}}>Por favor, aguarde. Isso pode levar alguns minutos...</p>
+      <div className="glass-panel animate-scale-in" style={{
+        position: 'fixed', 
+        bottom: '2rem', 
+        right: '2rem', 
+        zIndex: 9999, 
+        padding: '1.5rem', 
+        display: 'flex', 
+        alignItems: 'center', 
+        gap: '1rem',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+        border: '1px solid rgba(255, 255, 255, 0.1)',
+        borderRadius: '12px'
+      }}>
+        <Dices size={32} color="var(--accent)" style={{animation: 'pulse 2s infinite'}} />
+        <div>
+          <h3 style={{margin: '0 0 0.25rem', fontSize: '1.1rem'}}>Atualizando Dados</h3>
+          <p style={{color: 'var(--text-muted)', margin: 0, fontSize: '0.9rem'}}>Isso pode levar alguns minutos...</p>
         </div>
       </div>
     )}
     <div className="app-container animate-fade-in">
-      <header className="header glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', alignItems: 'center', padding: '2rem' }}>
+      <header className="header glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'center', padding: '0.5rem 1rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', width: '100%', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <img src="/logo.png" alt="Boardgame Manager Logo" style={{ width: '350px', maxWidth: '100%', height: 'auto', objectFit: 'contain', filter: 'drop-shadow(0px 0px 8px rgba(255,255,255,0.2))' }} />
+            <img src="/logo.png" alt="Boardgame Manager Logo" style={{ width: '350px', maxWidth: '100%', height: 'auto', objectFit: 'contain', filter: 'drop-shadow(0px 0px 8px rgba(255,255,255,0.2))', marginTop: '-22px', marginBottom: '-22px' }} />
           </div>
           
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
@@ -263,7 +290,7 @@ function App() {
       <main>
         {games.length === 0 ? (
           <div className="glass-panel" style={{textAlign: 'center', padding: '6rem 2rem'}}>
-            <Gamepad2 size={64} color="var(--text-muted)" style={{opacity: 0.5, margin: '0 auto 1.5rem'}} />
+            <Dices size={64} color="var(--text-muted)" style={{opacity: 0.5, margin: '0 auto 1.5rem'}} />
             <h2 style={{fontSize: '1.5rem', marginBottom: '0.5rem'}}>Sua Coleção está Vazia</h2>
             <p style={{color: 'var(--text-muted)', maxWidth: '400px', margin: '0 auto 2rem'}}>
               Faça o upload da sua planilha Excel contendo os dados da sua coleção para começar. As colunas esperadas são: <strong>jogos</strong>, <strong>status</strong>, <strong>tipo</strong>, <strong>valor</strong> (pago) e opcionalmente <strong>valor mercado</strong>.
@@ -435,6 +462,10 @@ function App() {
       onSave={setColumnMapping}
       ludoToken={ludoToken}
       setLudoToken={setLudoToken}
+      onOpenHelp={() => {
+        setIsSettingsModalOpen(false);
+        setIsHelpModalOpen(true);
+      }}
     />
 
     <BGGImportModal
@@ -454,6 +485,11 @@ function App() {
       isOpen={isReportsModalOpen}
       onClose={() => setIsReportsModalOpen(false)}
       games={games}
+    />
+
+    <HelpModal
+      isOpen={isHelpModalOpen}
+      onClose={() => setIsHelpModalOpen(false)}
     />
   </>
   );
