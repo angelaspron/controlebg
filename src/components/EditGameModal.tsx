@@ -100,6 +100,7 @@ export function EditGameModal({ game, isOpen, onClose, onSave, onDelete, onRefre
 
   const panelStyle: React.CSSProperties = {
     width: '100%', maxWidth: '640px', padding: '2rem', position: 'relative',
+    maxHeight: '90vh', overflowY: 'auto'
   };
 
   const labelStyle: React.CSSProperties = {
