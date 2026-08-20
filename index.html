@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <script>
+      window.onerror = function(msg, url, line, col, error) {
+        document.body.innerHTML = '<div style="padding:2rem;color:red;background:#fee2e2;min-height:100vh;"><h1>Erro Fatal (JS)</h1><pre>' + msg + '\\n\\nEm: ' + url + ' (Linha ' + line + ')</pre></div>';
+      };
+      window.addEventListener('unhandledrejection', function(event) {
+        document.body.innerHTML = '<div style="padding:2rem;color:red;background:#fee2e2;min-height:100vh;"><h1>Erro Fatal (Promise)</h1><pre>' + event.reason + '</pre></div>';
+      });
+    </script>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>boardgame-manager</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

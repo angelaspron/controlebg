@@ -1,0 +1,1509 @@
+---
+openapi: 3.0.0
+info:
+  title: LudoAPI
+  description: "# Introdução\n  Essa API é documentada no formato \"OpenAPI(3.0) e fornece meios para acessar dados do site [Ludopedia](https://ludopedia.com.br) através de uma autenticação [OAUTH 2.0](https://oauth.net/2/). As Urls de autenticação podem ser encontradas na seção Authentication.\n  \n  A API se encontra em estágio ALPHA, por isso está em constante atualização. Caso tenha alguma dúvida sobre a utilização da API, tenha encontrado bugs ou tenha sugestões, por favor entre em contato através do e-mail api@ludopedia.com.br\n   \n# Aplicativo\n  Para iniciar a utilização da API, é necessário cadastrar um aplicativo na Ludopedia. Através do link [https://ludopedia.com.br/aplicativos](https://ludopedia.com.br/aplicativos) você consegue ver os seus aplicativos atuais e criar um novo Aplicativo.\n  \n  Ao criar um aplicativo, será gerado um  ``` app_id ``` , um ``` app_key ``` e um ``` access_token ```.  O ``` app_id ``` e o ``` app_key ``` serão utilizados pela sua aplicação para conseguir um ``` acces_token ``` de usuário.\n  \n  O ```access_token``` gerado automaticamente, corresponde a um token para acesso a dados do próprio usuário dono do aplicativo. \n\n# Adquirindo um access_token\n  Para adquirir um ```access_token```, você deve direcionar o usuário (através de um botão ou link) para nossa url de autorização (https://ludopedia.com.br/oauth), passando os parametros ``` app_id ``` e ``` redirect_uri ```. A redirect_uri deve estar previamente cadastrada no Aplicativo [https://ludopedia.com.br/aplicativos](https://ludopedia.com.br/aplicativos) .\n  \n  <pre><code> https://ludopedia.com.br/oauth?app_id=seu_app_id&redirect_uri=seu_servidor_de_retorno</code></pre>\n\n  O Usuário será redirecionado para a Ludopedia onde ele poderá <b class=\"teste\">Aprovar</b> ou <b>Negar</b> o acesso do aplicativo a seus dados.\n  \n  \n  Após a seleção do usuário, a Ludopedia realizará um **redirecionamento** para sua ```redirect_uri```. Caso o usuário tenha **Aprovado** o acesso, será enviado um parametro ```code``` que pode ser trocado por um ```access_token``` de usuário. Caso tenha sido **Negado** ou tenha ocorrido um **Erro**, serão enviados os parametros ```error``` e ```error_description```.\n  \n  Com o <code>code</code> a aplicação deve realizar um <b>POST</b> em nossa url de token (https://ludopedia.com.br/tokenrequest) informando o Parametro <code>code</code>. Como resposta recebera um objeto json como <code>access_token</code> de usuário.\n  \n# Consumindo Métodos da API\n  Para consumir métodos da API é necessário sempre informar um <code>access_token</code> no header <b>AUTHORIZATION</b>.\n  <table class=\"table-authorization\">\n    <thead>\n      <tr>\n        <th>Key</th>\n        <th>Value</th>\n      </tr>\n    </thead>\n    <tbody>\n      <tr><td>Authorization</td><td>Bearer <code>access_token</code></td>\n    </tbody>\n  </table>\n"
+  contact:
+    email: api@ludopedia.com.br
+  version: 0.0.5
+  x-logo:
+    url: https://www.ludopedia.com.br/images/brand.svg
+    altText: Ludopedia logo
+servers:
+- url: https://ludopedia.com.br/api/v1
+  description: LudoAPI
+tags:
+- name: Jogos
+  description: Operações referente a ficha de jogos
+- name: Usuários
+  description: Operações referente a usuários
+- name: Coleção
+  description: Operações referente a coleção de usuários
+- name: Partidas
+  description: Operações referente ao registro de Partidas
+- name: Extra
+  description: Operações diversas
+paths:
+  /colecao:
+    description: Coleção do usuário
+    get:
+      tags:
+      - Coleção
+      summary: Listar Coleção
+      description: |
+        <div class="operation"><span class="get">GET</span> /colecao</div>
+
+        Retorna a lista de jogos da Coleção do usuário. Através desse método pode ser retornado
+
+        ```colecao``` Retorna os jogos da coleção do usuário
+
+        ```lista_desejos``` Retona a lista de desejos
+
+        ```favoritos``` Retorna os jogos favoritos
+
+        ```teve``` Retonar os jogos que o usuário já teve
+
+        ```notas``` Retonar os jogos que o usuário já deu nota
+
+        ```comentários``` Retonar os jogos que o usuário já preencheu um comentário
+      parameters:
+      - name: lista
+        in: query
+        description: Indica qual lista da coleção do usuário irá buscar
+        required: true
+        style: form
+        explode: true
+        schema:
+          type: string
+          enum:
+          - colecao
+          - favoritos
+          - teve
+          - lista_desejos
+          - comentados
+          - notas
+          - jogados
+      - name: search
+        in: query
+        description: Realiza uma busca na coleção atual pelo nome do jogo
+        required: false
+        style: form
+        explode: true
+        schema:
+          type: string
+      - name: ordem
+        in: query
+        description: Ordenação dos resultado por Nome do jogo, Ranking, Nota do Usuário ou Quantidade de Partidas registradas.  Por padrão, vem ordenado por nome do jogo.
+        required: false
+        style: form
+        explode: true
+        schema:
+          type: string
+          enum:
+          - nome
+          - rank
+          - nota
+          - partidas
+      - name: tp_jogo
+        in: query
+        description: Filtra o resultado pelo tipo de jogo. ```t``` = todos, ```b``` = jogo base, ```e``` = expansão
+        required: false
+        style: form
+        explode: true
+        schema:
+          type: string
+          enum:
+          - t
+          - b
+          - e
+      - name: qt_jogadores
+        in: query
+        description: Filtra o resultado para jogos que aceitem essa quantidade de jogadores.
+        required: false
+        style: form
+        explode: true
+        schema:
+          type: integer
+      - name: page
+        in: query
+        description: Pagina atual
+        required: false
+        style: form
+        explode: true
+        schema:
+          type: integer
+          default: 1
+      - name: rows
+        in: query
+        description: Quantidade de Registros a retornar (máximo 100)
+        required: false
+        style: form
+        explode: true
+        schema:
+          maximum: 100
+          minimum: 1
+          type: integer
+          default: 20
+      responses:
+        "200":
+          description: Lista de Jogos
+          content:
+            aplication-json:
+              schema:
+                $ref: '#/components/schemas/inline_response_200'
+      security:
+      - oauth: []
+    post:
+      tags:
+      - Coleção
+      summary: Inserir/Alterar na Coleção
+      description: |
+        <div class="operation"><span class="post">POST</span> /colecao</div>
+        Para inserir ou alterar dados da relação de um jogo/usuário, é necessário fazer um <b>POST </b> com o objeto <code>JogoUsuario</code><br><br>
+        Antes de realizar o <b>POST</b> você deve realizar o um <b>GET</b> do Objeto através do endpoint <code>colecao/item/{id_jogo}</code> para trazer os dados atualizados e alterar o que deseja.<br><br>
+        Você pode adicionar um jogo na Coleção alterando a Flag dele de 0 para 1 no objeto JogoUsuario : <br><br>
+      requestBody:
+        $ref: '#/components/requestBodies/JogoUsuarioBody'
+      responses:
+        "200":
+          description: Jogo Usuario Atualizado
+          content:
+            aplication-json:
+              schema:
+                $ref: '#/components/schemas/JogoUsuario'
+  /colecao/item/{id_jogo}:
+    get:
+      tags:
+      - Coleção
+      summary: Usuário Jogo
+      description: |
+        <div class="operation"><span class="get">GET</span> /colecao/item/{<span class="param">id_jogo</span>}</div>
+        Retorna a relação do usuário com o jogo (Nota, Comentario, coleção, etc)
+      parameters:
+      - name: id_jogo
+        in: path
+        required: true
+        style: simple
+        explode: false
+        schema:
+          type: integer
+      responses:
+        "200":
+          description: Jogo
+          content:
+            aplication-json:
+              schema:
+                $ref: '#/components/schemas/JogoUsuario'
+      security:
+      - oauth: []
+  /colecao/tags:
+    get:
+      tags:
+      - Coleção
+      summary: Tags do usuário
+      description: |
+        <div class="operation"><span class="get">GET</span> /colecao/tags</div>
+        Listar Tags do usuário
+      parameters:
+      - name: page
+        in: query
+        description: Pagina atual
+        required: false
+        style: form
+        explode: true
+        schema:
+          type: integer
+          default: 1
+      - name: rows
+        in: query
+        description: Quantidade de Registros a retornar (máximo 100)
+        required: false
+        style: form
+        explode: true
+        schema:
+          maximum: 100
+          minimum: 1
+          type: integer
+          default: 20
+      responses:
+        "200":
+          description: Lista de tags
+          content:
+            aplication-json:
+              schema:
+                $ref: '#/components/schemas/inline_response_200_1'
+    post:
+      tags:
+      - Coleção
+      summary: Inserir/Atualizar Tag
+      description: |
+        <div class="operation"><span class="post">POST</span> /colecao/tags</div>
+        Permite a criação de uma nova tag, ou a atualização de uma tag Existente.
+        Para a criação de uma tag, pode-se passar o id_usuario_tag com valor <b>0</b>
+      requestBody:
+        $ref: '#/components/requestBodies/UsuarioTagBody'
+      responses:
+        "200":
+          description: Objeto UsuarioTag
+          content:
+            aplication-json:
+              schema:
+                $ref: '#/components/schemas/inline_response_200_2'
+  /colecao/tags/{id_usuario_tag}:
+    delete:
+      tags:
+      - Coleção
+      summary: Deletar Tag
+      description: |
+        <div class="operation"><span class="delete">DELETE</span> /colecao/tags/{<span class="param">id_usuario_tag</span>}</div>
+        Deletar Tag de Usuário a partir do id_usuario_tag
+      parameters:
+      - name: id_usuario_tag
+        in: path
+        required: true
+        style: simple
+        explode: false
+        schema:
+          type: integer
+      responses:
+        "200":
+          description: Retorna Null se o objeto foi deletado
+      security:
+      - oauth: []
+  /colecao/count:
+    get:
+      tags:
+      - Coleção
+      summary: Contabilizar Coleção
+      description: |
+        <div class="operation"><span class="get">GET</span> /colecao/count</div>
+        Contabilizar Coleção
+      responses:
+        "200":
+          description: Listas e Quantidades
+          content:
+            aplication-json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/inline_response_200_3'
+      security:
+      - oauth: []
+  /colecao/group:
+    description: Coleção do usuário
+    get:
+      tags:
+      - Coleção
+      summary: Agrupar Coleção
+      description: "<div class=\"operation\"><span class=\"get\">GET</span> /colecao/group</div>\nRetorna os itens da coleção do usuário agrupados. É possível trazer multiplos agrupamentos em uma única chamada, separando os agrupamentos por | no parametro ``groupby``\n\nAgrupamentos possíveis : \n\n ```tags``` Retorna a quantidade de jogos agrupados pelas Tags do usuário\n\n```jogadores``` Retorna a quantidade de jogos agrupados pelo número de jogadores possíveis cadastrada na ficha do jogo\n\n```mecanicas``` Retorna a quantidade de jogos agrupadas pelas Mecânicas do jogo\n\n```temas``` Retorna a quantidade de jogos agrupadas pelos Temas do jogo\n"
+      parameters:
+      - name: lista
+        in: query
+        description: Indica qual lista da coleção do usuário irá buscar
+        required: true
+        style: form
+        explode: true
+        schema:
+          type: string
+          enum:
+          - colecao
+          - favoritos
+          - teve
+          - lista_desejos
+          - comentados
+          - notas
+          - jogados
+      - name: groupby
+        in: query
+        description: Agrupamentos desejados, separados por |
+        required: true
+        style: form
+        explode: true
+        schema:
+          type: string
+          example: mecanicas|temas|tags
+      - name: page
+        in: query
+        description: Pagina atual
+        required: false
+        style: form
+        explode: true
+        schema:
+          type: integer
+          default: 1
+      - name: rows
+        in: query
+        description: Quantidade de Registros a retornar (máximo 100)
+        required: false
+        style: form
+        explode: true
+        schema:
+          maximum: 100
+          minimum: 1
+          type: integer
+          default: 20
+      responses:
+        "200":
+          description: "Retorna um Objeto com os arrays dos grupos solicitados.\n\n  Exemplo : groupby=temas|mecanicas\n  \n  Retorno : <code>\n            { \n              temas:[], \n              mecanicas:[]\n            }\n            </code>\n"
+          content:
+            aplication-json:
+              schema:
+                type: object
+      security:
+      - oauth: []
+  /jogos:
+    description: Retorna uma lista de jogos, de acordo com os parametros passados.
+    get:
+      tags:
+      - Jogos
+      summary: Listar Jogos
+      description: |
+        <div class="operation "><span class="get">GET</span> /jogos</div>
+        Retorna uma lista de jogos, de acordo com os parametros passados.
+      parameters:
+      - name: search
+        in: query
+        description: Pesquisa pelo nome do jogo
+        required: false
+        style: form
+        explode: true
+        schema:
+          type: string
+      - name: tp_jogo
+        in: query
+        description: Filtra o resultado pelo tipo de jogo. ``` ``` = todos, ```b``` = jogo base, ```e``` = expansão
+        required: false
+        style: form
+        explode: true
+        schema:
+          type: string
+          default: ""
+          enum:
+          - ""
+          - b
+          - e
+      - name: id_jogo_base
+        in: query
+        description: Indica para trazer apenas jogos que sejam <b>expansão</b> do jogo base indicado por id_jogo_base
+        required: false
+        style: form
+        explode: true
+        schema:
+          type: integer
+      - name: page
+        in: query
+        description: Pagina atual
+        required: false
+        style: form
+        explode: true
+        schema:
+          type: integer
+          default: 1
+      - name: rows
+        in: query
+        description: Quantidade de Registros a retornar (máximo 100)
+        required: false
+        style: form
+        explode: true
+        schema:
+          maximum: 100
+          minimum: 1
+          type: integer
+          default: 20
+      responses:
+        "200":
+          description: Lista de Jogos
+          content:
+            aplication-json:
+              schema:
+                $ref: '#/components/schemas/inline_response_200_4'
+      security:
+      - oauth: []
+  /jogos/{id_jogo}:
+    get:
+      tags:
+      - Jogos
+      summary: Detalhes de um jogo
+      description: |
+        <div class="operation"><span class="get">GET</span> /jogos/{<span class="param">id_jogo</span>}</div>
+        Retorna os detalhes da Ficha do jogo
+      parameters:
+      - name: id_jogo
+        in: path
+        required: true
+        style: simple
+        explode: false
+        schema:
+          type: integer
+      responses:
+        "200":
+          description: Jogo
+          content:
+            aplication-json:
+              schema:
+                $ref: '#/components/schemas/Jogo'
+      security:
+      - oauth: []
+  /jogos/{id_jogo}/notas:
+    get:
+      tags:
+      - Jogos
+      summary: Comentários e notas (não implementado)
+      description: |
+        <div class="operation"><span class="get">GET</span> /jogos{<span class="param">id_jogo</span>}/notas</div>
+        Retorna os Comentários e notas de um jogo
+      parameters:
+      - name: id_jogo
+        in: path
+        description: Id do jogo
+        required: true
+        style: simple
+        explode: false
+        schema:
+          type: integer
+      responses:
+        "200":
+          description: Notas
+          content:
+            application-json:
+              schema:
+                $ref: '#/components/schemas/inline_response_200_5'
+      security:
+      - oauth: []
+  /jogos/{id_jogo}/videos:
+    get:
+      tags:
+      - Jogos
+      summary: Retorna a lista de videos de um jogo (não implementado)
+      description: |
+        <div class="operation"><span class="get">GET</span> /jogos{<span class="param">id_jogo</span>}/videos</div>
+        Retorna a lista de videos de um jogo (não implementado)
+      parameters:
+      - name: id_jogo
+        in: path
+        description: Id do jogo
+        required: true
+        style: simple
+        explode: false
+        schema:
+          type: integer
+      responses:
+        "200":
+          description: Vídeos
+          content:
+            application-json:
+              schema:
+                $ref: '#/components/schemas/inline_response_200_5'
+      security:
+      - oauth: []
+  /jogos/{id_jogo}/imagens:
+    get:
+      tags:
+      - Jogos
+      summary: Retorna a lista de Imagens de um jogo (Não implementado)
+      description: |
+        <div class="operation"><span class="get">GET</span> /jogos{<span class="param">id_jogo</span>}/imagens</div>
+        Retorna a lista de Imagens de um jogo (não implementado)
+      parameters:
+      - name: id_jogo
+        in: path
+        description: Id do jogo
+        required: true
+        style: simple
+        explode: false
+        schema:
+          type: integer
+      responses:
+        "200":
+          description: Imagens
+          content:
+            application-json:
+              schema:
+                $ref: '#/components/schemas/inline_response_200_5'
+      security:
+      - oauth: []
+  /jogos/{id_jogo}/aquivos:
+    get:
+      tags:
+      - Jogos
+      summary: Retorna a lista de Arquivos de um jogo (Não Implementado)
+      description: |
+        <div class="operation"><span class="get">GET</span> /jogos{<span class="param">id_jogo</span>}/arquivos</div>
+        Retorna a lista de arquivos de um jogo (não implementado)
+      parameters:
+      - name: id_jogo
+        in: path
+        description: Id do jogo
+        required: true
+        style: simple
+        explode: false
+        schema:
+          type: integer
+      responses:
+        "200":
+          description: Arquivos
+          content:
+            application-json:
+              schema:
+                $ref: '#/components/schemas/inline_response_200_5'
+      security:
+      - oauth: []
+  /me:
+    get:
+      tags:
+      - Usuários
+      summary: Dados do usuário Logado
+      description: |
+        <div class="operation"><span class="get">GET</span> /me</div>
+        Retorna dados do usuário Logado
+      responses:
+        "200":
+          description: Dados do usuário Logado
+          content:
+            application-json:
+              schema:
+                $ref: '#/components/schemas/inline_response_200_6'
+  /usuarios:
+    get:
+      tags:
+      - Usuários
+      summary: Listar Usuários
+      description: |
+        <div class="operation"><span class="get">GET</span> /usuarios</div>
+        Retorna uma lista de usuários, baseado nos parametros de Pesquisa
+      parameters:
+      - name: search
+        in: query
+        description: String para pesquisa de usuários
+        required: false
+        style: form
+        explode: true
+        schema:
+          type: string
+      - name: page
+        in: query
+        description: Pagina atual da pesquisa
+        required: false
+        style: form
+        explode: true
+        schema:
+          type: integer
+          default: 1
+      responses:
+        "200":
+          description: Lista de Usuários
+          content:
+            aplication-json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Usuario'
+      security:
+      - oauth: []
+  /partidas:
+    get:
+      tags:
+      - Partidas
+      summary: Listar Partidas
+      description: |
+        <div class="operation"><span class="get">GET</span> /partidas</div>
+        Retorna a lista de Partidas do usuário
+      parameters:
+      - name: dt_ini
+        in: query
+        description: Busca Partidas com data igual ou superior a dt_ini informada no formato <b>yyyy-mm-dd</b>
+        required: false
+        style: form
+        explode: true
+        schema:
+          type: string
+      - name: dt_fim
+        in: query
+        description: Busca Partidas com data inferior a dt_fim informada no formato <b>yyyy-mm-dd</b>
+        required: false
+        style: form
+        explode: true
+        schema:
+          type: string
+      - name: id_jogo
+        in: query
+        description: Busca Partidas que tenham o jogo(id_jogo)
+        required: false
+        style: form
+        explode: true
+        schema:
+          type: integer
+      - name: id_usuario_jogador
+        in: query
+        description: Busca Partidas que o usuário (id_usuario) tenha participado
+        required: false
+        style: form
+        explode: true
+        schema:
+          type: integer
+      - name: jogador
+        in: query
+        description: Busca Partidas que o jogador não registrado (sem id_usuario) tenha participado
+        required: false
+        style: form
+        explode: true
+        schema:
+          type: string
+      - name: weekday
+        in: query
+        description: Dia da semana (1 Domingo a 7 Sabado)
+        required: false
+        style: form
+        explode: true
+        schema:
+          type: integer
+          enum:
+          - 1
+          - 2
+          - 3
+          - 4
+          - 5
+          - 6
+          - 7
+      - name: page
+        in: query
+        description: Pagina atual
+        required: false
+        style: form
+        explode: true
+        schema:
+          type: integer
+          default: 1
+      - name: rows
+        in: query
+        description: Quantidade de Registros a retornar (máximo 100)
+        required: false
+        style: form
+        explode: true
+        schema:
+          maximum: 100
+          minimum: 1
+          type: integer
+          default: 20
+      responses:
+        "200":
+          description: Lista de Partidas do usuário
+          content:
+            aplication-json:
+              schema:
+                $ref: '#/components/schemas/inline_response_200_7'
+      security:
+      - oauth: []
+    post:
+      tags:
+      - Partidas
+      summary: Inserir/Alterar Partida
+      description: |
+        <div class="operation"><span class="post">POST</span> /partidas</div>
+        Cadastra ou altera uma partida. Para cadastrar o objeto deve ter o id_partida = 0 . Para fazer update, deve-se passar o id_partida e a partida deve ter sido criada pelo próprio usuário.
+        O usuário deve fazer parte do array <code>Jogadores</code>. O <code>id_usuario</code> do usuário logado pode ser obtido através do método <code>/me</code>
+      requestBody:
+        $ref: '#/components/requestBodies/PartidaBody'
+      responses:
+        "200":
+          description: Partida
+  /partidas/{id_partida}:
+    get:
+      tags:
+      - Partidas
+      summary: Retornar Dados de uma Partida
+      description: |
+        <div class="operation"><span class="get">GET</span> /partidas/{<span class="param">id_partida</span>}</div>
+        Retorna detalhes da Partida
+      parameters:
+      - name: id_partida
+        in: path
+        required: true
+        style: simple
+        explode: false
+        schema:
+          type: integer
+      responses:
+        "200":
+          description: Partida
+          content:
+            aplication-json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Partida'
+      security:
+      - oauth: []
+    delete:
+      tags:
+      - Partidas
+      summary: Deletar Partida
+      description: |
+        <div class="operation"><span class="delete">DELETE</span> /partidas/{<span class="param">id_partida</span>}</div>
+        Deletar a partida. Apenas usuário que registrou a partida tem permissão de exclui-la
+      parameters:
+      - name: id_partida
+        in: path
+        required: true
+        style: simple
+        explode: false
+        schema:
+          type: integer
+      responses:
+        "200":
+          description: Retorna Null se o objeto foi deletado
+      security:
+      - oauth: []
+  /partidas/group:
+    get:
+      tags:
+      - Partidas
+      summary: Agrupar Partidas
+      description: "<div class=\"operation\"><span class=\"get\">GET</span> /partidas/group</div>\nRetorna as partidas agrupadas. É possível trazer multiplos agrupamentos em uma única chamada, separando os agrupamentos por | no parametro ``groupby``\n\nAgrupamentos possíveis : \n\n ```jogos``` Retorna partidas agrupadas por jogo<br>\n```jogadores``` Retorna partidas agrupadas por jogadores<br>\n```qt_jogadores``` Retorna partidas agrupadas por qtde de jogadores<br>\n```expansoes``` Retorna partidas agrupadas por expansão<br>\n```diasemana``` Retorna partidas agrupadas por dia da semana<br>\n```grupos``` Retorna partidas agrupas por Grupo de Usuários<br>\n"
+      parameters:
+      - name: groupby
+        in: query
+        description: Agrupamentos desejados, separados por |
+        required: true
+        style: form
+        explode: true
+        schema:
+          type: string
+          example: jogos|jogadores
+      - name: dt_ini
+        in: query
+        description: Busca Partidas com data igual ou superior a dt_ini informada no formato <b>yyyy-mm-dd</b>
+        required: false
+        style: form
+        explode: true
+        schema:
+          type: string
+      - name: dt_fim
+        in: query
+        description: Busca Partidas com data inferior a dt_fim informada no formato <b>yyyy-mm-dd</b>
+        required: false
+        style: form
+        explode: true
+        schema:
+          type: string
+      - name: id_jogo
+        in: query
+        description: Busca Partidas que tenham o jogo(id_jogo)
+        required: false
+        style: form
+        explode: true
+        schema:
+          type: integer
+      - name: id_usuario_jogador
+        in: query
+        description: Busca Partidas que o usuário (id_usuario) tenha participado
+        required: false
+        style: form
+        explode: true
+        schema:
+          type: integer
+      - name: jogador
+        in: query
+        description: Busca Partidas que o jogador não registrado (sem id_usuario) tenha participado
+        required: false
+        style: form
+        explode: true
+        schema:
+          type: string
+      - name: weekday
+        in: query
+        description: Dia da semana (1 Domingo a 7 Sabado)
+        required: false
+        style: form
+        explode: true
+        schema:
+          type: integer
+          enum:
+          - 1
+          - 2
+          - 3
+          - 4
+          - 5
+          - 6
+          - 7
+      - name: order
+        in: query
+        required: false
+        style: form
+        explode: true
+        schema:
+          type: string
+          description: Ordenação
+          default: qtde
+          enum:
+          - qtde
+          - dt_ultima_partida
+          - duracao
+      - name: page
+        in: query
+        description: Pagina atual
+        required: false
+        style: form
+        explode: true
+        schema:
+          type: integer
+          default: 1
+      - name: rows
+        in: query
+        description: Quantidade de Registros a retornar (máximo 100)
+        required: false
+        style: form
+        explode: true
+        schema:
+          maximum: 100
+          minimum: 1
+          type: integer
+          default: 20
+      responses:
+        "200":
+          description: "Retorna um Objeto com os arrays dos grupos solicitados.\n\n  Exemplo : groupby=temas|mecanicas\n  \n  Retorno : {jogos:[], jogadores:[]}\n"
+          content:
+            aplication-json:
+              schema:
+                type: object
+      security:
+      - oauth: []
+  /partidas/resumo:
+    get:
+      tags:
+      - Partidas
+      summary: Resumo de Partidas
+      description: |
+        <div class="operation"><span class="get">GET</span> /partidas/resumo</div>
+        Retorna um resumo das partidas do usuário
+      parameters:
+      - name: dt_ini
+        in: query
+        description: Busca Partidas com data igual ou superior a dt_ini informada no formato <b>yyyy-mm-dd</b>
+        required: false
+        style: form
+        explode: true
+        schema:
+          type: string
+      - name: dt_fim
+        in: query
+        description: Busca Partidas com data inferior a dt_fim informada no formato <b>yyyy-mm-dd</b>
+        required: false
+        style: form
+        explode: true
+        schema:
+          type: string
+      - name: id_jogo
+        in: query
+        description: Busca Partidas que tenham o jogo(id_jogo)
+        required: false
+        style: form
+        explode: true
+        schema:
+          type: integer
+      - name: id_usuario_jogador
+        in: query
+        description: Busca Partidas que o usuário (id_usuario) tenha participado
+        required: false
+        style: form
+        explode: true
+        schema:
+          type: integer
+      - name: jogador
+        in: query
+        description: Busca Partidas que o jogador não registrado (sem id_usuario) tenha participado
+        required: false
+        style: form
+        explode: true
+        schema:
+          type: string
+      - name: weekday
+        in: query
+        description: Dia da semana (1 Domingo a 7 Sabado)
+        required: false
+        style: form
+        explode: true
+        schema:
+          type: integer
+          enum:
+          - 1
+          - 2
+          - 3
+          - 4
+          - 5
+          - 6
+          - 7
+      responses:
+        "200":
+          description: |
+            Resumo das partidas
+          content:
+            application-json:
+              schema:
+                $ref: '#/components/schemas/inline_response_200_8'
+      security:
+      - oauth: []
+  /extra/generateimage:
+    get:
+      tags:
+      - Extra
+      summary: Imagem com Capas
+      description: "<div class=\"operation\"><span class=\"get\">GET</span> /extra/generateimage</div>\nGera uma imagem com capas dos jogos passados.\nCaso sejam passadas mais de 9 imagens, apenas as 9 primeiras serão consideradas.\nO formato da imagem é baseado no número de jogos passados.: <br>\n1 jogo (1x3)<br>\n2 jogos (1x3)<br>\n<b>3 jogos (1x3)</b><br>\n<b>4 jogos (2x2)</b><br>\n5 jogos (2x3)<br>\n<b>6 jogos (2x3)</b><br>\n7 jogos (3x3)<br>\n8 jogos (3x3)<br>\n<b>9 jogos (3x3)</b><br>\nExemplo: \n<img src=\"top_nine.jpg\" class=\"top-nine\">\n"
+      parameters:
+      - name: jogos
+        in: query
+        required: true
+        style: form
+        explode: true
+        schema:
+          type: string
+          description: Id de jogos separados por vírgula ","
+          example: 5,710,404,53,86,187,108,1860,23
+      - name: cropy_cover
+        in: query
+        required: false
+        style: form
+        explode: true
+        schema:
+          type: boolean
+          description: Indica se a imagem será cortada para manter a proporção de altura x largura.
+          example: true
+      responses:
+        "200":
+          description: Jogo
+          content:
+            aplication-json:
+              schema:
+                $ref: '#/components/schemas/inline_response_200_9'
+      security:
+      - oauth: []
+components:
+  schemas:
+    Jogo:
+      required:
+      - id_jogo
+      type: object
+      properties:
+        id_jogo:
+          type: integer
+          example: 404
+        nm_jogo:
+          type: string
+          example: Terra Mystica
+        thumb:
+          type: string
+          example: https://storage.googleapis.com/ludopedia-capas/404_t.jpg
+        tp_jogo:
+          type: string
+          example: b
+          enum:
+          - b
+          - e
+        link:
+          type: string
+          example: https:ludopedia.com.br/jogo/terra-mystica
+        ano_publicacao:
+          type: integer
+          example: 2012
+        ano_nacional:
+          type: integer
+          example: 2016
+        qt_jogadores_min:
+          type: integer
+          example: 2
+        qt_jogadores_max:
+          type: integer
+          example: 5
+        vl_tempo_jogo:
+          type: integer
+          example: 100
+        idade_minima:
+          type: integer
+          example: 12
+        qt_tem:
+          type: integer
+          example: 1500
+        qt_teve:
+          type: integer
+          example: 1500
+        qt_favorito:
+          type: integer
+          example: 400
+        qt_quer:
+          type: integer
+          example: 1300
+        qt_jogou:
+          type: integer
+          example: 707
+        mecanicas:
+          type: array
+          items:
+            $ref: '#/components/schemas/Jogo_mecanicas'
+        categorias:
+          type: array
+          items:
+            $ref: '#/components/schemas/Jogo_categorias'
+        temas:
+          type: array
+          items:
+            $ref: '#/components/schemas/Jogo_temas'
+        artistas:
+          type: array
+          items:
+            $ref: '#/components/schemas/Jogo_artistas'
+        designers:
+          type: array
+          items:
+            $ref: '#/components/schemas/Jogo_artistas'
+    Grupo:
+      required:
+      - id_grupo_jogo
+      type: object
+      properties:
+        id_grupo_jogo:
+          type: integer
+          example: 1
+        nm_grupo:
+          type: string
+          example: Meu Grupo
+    UsuarioTag:
+      required:
+      - id_usuario_tag
+      - nm_tag
+      type: object
+      properties:
+        id_usuario_tag:
+          type: integer
+        nm_tag:
+          type: string
+    JogoUsuario:
+      required:
+      - id_jogo
+      type: object
+      properties:
+        id_usuario_jogo:
+          type: integer
+          readOnly: true
+        id_jogo:
+          type: integer
+          description: Identifador do Jogo
+        nm_jogo:
+          type: string
+          readOnly: true
+        thumb:
+          type: string
+          readOnly: true
+        link:
+          type: string
+          readOnly: true
+        id_usuario:
+          type: integer
+          readOnly: true
+        fl_tem:
+          type: integer
+          description: Flag que indica se o jogo está na Coleção do usuário (tenho)
+        fl_quer:
+          type: integer
+          description: Flag que indica se o jogo está na Lista de Desejos do usuário (quer)
+        fl_teve:
+          type: integer
+          description: Flag que indica se o usuário já teve esse jogo (teve)
+        fl_jogou:
+          type: integer
+          description: Flag que indica se o usuário já jogou esse jogo (jogou)
+        comentario:
+          type: string
+          description: Comentário realizado pelo usuário sobre o jogo
+        comentario_privado:
+          type: string
+          description: Comentário Privado realizado pelo usuário
+        vl_nota:
+          type: number
+          description: Nota dada pelo usuário para o Jogo
+        qt_partidas:
+          type: integer
+          description: Quantidade partidas registradas no site
+          readOnly: true
+        vl_custo:
+          type: number
+          description: Valor pago pelo usuário pelo jogo
+        tags:
+          type: array
+          description: Array com Tags do usuário para esse Jogo. Adicione ou remova um objeto ao array para "Marcar" ou "Desmarcar" a Tag. Passar esse array vazio no post irá apagar todas as tags relacionadas a esse jogo.
+          items:
+            $ref: '#/components/schemas/JogoUsuario_tags'
+    Partida:
+      required:
+      - descricao
+      - dt_partida
+      - duracao
+      - expansoes
+      - id_partida
+      - jogadores
+      - jogo
+      - qt_partidas
+      type: object
+      properties:
+        id_partida:
+          type: integer
+          description: Id da partida. Para cadastrar uma nova, deve vir 0.
+          example: 0
+        qt_partidas:
+          maximum: 5
+          minimum: 1
+          type: integer
+          description: Qtde de partidas. Geralmente é cadastrado como 1 , mas caso o usuário queira registrar + de 1 partida do mesmo jogo em um unico registro, pode utilizar esse campo.
+          example: 1
+          default: 1
+        fl_digital:
+          maximum: 1
+          minimum: 0
+          type: integer
+          description: Flag que indica se a partida foi realizada em alguma plataforma digital(1)
+          example: 0
+        duracao:
+          maximum: 1435
+          type: integer
+          description: Duração da partida, em minutos
+          nullable: true
+        dt_partida:
+          type: string
+          description: Data da Partida no formato yyyy-mm-dd
+          example: 2013-06-01
+        descricao:
+          type: string
+          description: Observações do usuário sobre a partida
+          nullable: true
+        grupo:
+          $ref: '#/components/schemas/Grupo'
+        jogo:
+          $ref: '#/components/schemas/JogoResumo'
+        expansoes:
+          type: array
+          description: Expansões do jogo utilizadas nessa partida. É obrigatório apenas o id_jogo da expansão para cadastro.
+          items:
+            $ref: '#/components/schemas/JogoResumo'
+        jogadores:
+          type: array
+          description: Jogadores que participaram da partida. É necessário pelo menos 1 jogador no array.
+          items:
+            $ref: '#/components/schemas/Jogador'
+    Jogador:
+      required:
+      - fl_vencedor
+      - id_partida_jogador
+      - id_usuario
+      - nome
+      - observacao
+      - vl_pontos
+      type: object
+      properties:
+        id_partida_jogador:
+          type: integer
+          description: Identificador do jogador na partida. Para inclusão de um novo jogador, o valor deve vir 0.
+          example: 1
+        nome:
+          type: string
+          description: Nome do jogador que não seja usuário do site. Para jogador que seja usuário do site, deve-se preenhcer o campo id_usuario.
+          example: Vegeta
+        id_usuario:
+          type: integer
+          description: Id do usuário no site. Caso esteja nulo, indica que é um Jogador que não tem cadastro e deve ser preenchido o campo nome.
+          nullable: true
+          example: 1
+        fl_vencedor:
+          maximum: 1
+          minimum: 0
+          type: integer
+          description: |
+            Flag que indica se esse jogador foi o ganhador da partida. 0 false 1 true
+          nullable: false
+          example: 1
+        vl_pontos:
+          maximum: 999
+          minimum: -999
+          type: integer
+          nullable: true
+          example: 25
+        observacao:
+          maximum: 100
+          type: string
+          description: Descrição sobre o jogador na partida (Raça escolhida, cor, estratégia, etc)
+          nullable: true
+        thumb:
+          type: string
+          description: Thumbnail do jogador no site.
+          readOnly: true
+    JogoResumo:
+      type: object
+      properties:
+        id_jogo:
+          type: integer
+          description: Identificador do Jogo
+          example: 397
+        nm_jogo:
+          type: string
+          description: Nome do Jogo
+          readOnly: true
+          example: Catan o Jogo
+        nm_original:
+          type: string
+          description: Nome Original do jogo
+          readOnly: true
+          example: The Settlers of Catan
+        thumb:
+          type: string
+          description: Url da Thumbnail da capa do jogo (150x150)
+          readOnly: true
+          example: https://storage.googleapis.com/ludopedia-capas/397_t.jpg
+        link:
+          type: string
+          readOnly: true
+          example: https://www.ludopedia.com.br/jogo/the-settlers-of-catan
+    NotaJogo:
+      type: object
+      properties:
+        vl_nota:
+          type: number
+          example: 10
+        comentario:
+          type: string
+          example: Jogo muito bom
+    Usuario:
+      type: object
+      properties:
+        id_usuario:
+          type: integer
+          description: Id do usuário
+          example: 1
+        usuario:
+          type: string
+          description: Nome do usuário
+          example: Vegeta
+        thumb:
+          type: string
+          description: Url para Thumb do perfil do usuário
+          example: https://www.ludopedia.com.br/uploads/avatar/avatar_1_1605894422.jpg
+    inline_response_200:
+      type: object
+      properties:
+        colecao:
+          type: array
+          items:
+            $ref: '#/components/schemas/JogoUsuario'
+        qt_base:
+          type: integer
+          description: Total de jogos BASE da coleção
+        qt_exp:
+          type: integer
+          description: Total de EXPANSÕES de jogo na coleção
+        total:
+          type: integer
+          description: Total de Registros
+    inline_response_200_1:
+      type: object
+      properties:
+        tags:
+          type: array
+          items:
+            $ref: '#/components/schemas/UsuarioTag'
+        total:
+          type: integer
+          description: Total de Registros
+    inline_response_200_2:
+      type: object
+      properties:
+        colecao:
+          type: array
+          items:
+            $ref: '#/components/schemas/UsuarioTag'
+        total:
+          type: integer
+    inline_response_200_3:
+      type: object
+      properties:
+        lista:
+          type: string
+          example: colecao
+        qtde:
+          type: integer
+          example: 42
+    inline_response_200_4:
+      type: object
+      properties:
+        jogos:
+          type: array
+          items:
+            $ref: '#/components/schemas/JogoResumo'
+        total:
+          type: integer
+          description: Total de Registros
+    inline_response_200_5:
+      type: object
+      properties:
+        notas:
+          type: array
+          items:
+            $ref: '#/components/schemas/NotaJogo'
+    inline_response_200_6:
+      type: object
+      properties:
+        id_usuario:
+          type: integer
+          description: Id do usuário
+          example: 1
+        usuario:
+          type: string
+          description: Nome do usuário
+          example: Vegeta
+        thumb:
+          type: string
+          description: Url para Thumb do perfil do usuário
+          example: https://www.ludopedia.com.br/uploads/avatar/avatar_1_1605894422.jpg
+    inline_response_200_7:
+      type: object
+      properties:
+        partidas:
+          type: array
+          items:
+            $ref: '#/components/schemas/Partida'
+        total:
+          type: integer
+          description: Total de Registros
+    inline_response_200_8:
+      type: object
+      properties:
+        qt_partidas:
+          type: integer
+          description: Quantidade de partidas
+          example: 10
+        vl_duracao:
+          type: integer
+          description: Duracao registrada das partidas, em minutos
+          example: 120
+        qt_duracao:
+          type: integer
+          description: Quantidade de Partidas que possuem duracao cadastrada
+          example: 2
+        qt_jogos:
+          type: integer
+          description: Quantidade de Jogos Únicos usados em partidas
+          example: 5
+        qt_expansoes:
+          type: integer
+          description: Quantidade de Expansões Únicas usadas em partidas
+          example: 2
+        qt_vitorias:
+          type: integer
+          description: Quantidade de Partidas que o usuário venceu
+          example: 5
+        qt_usuarios:
+          type: integer
+          description: Quantidade de Usuários do site registrados nas partidas (o próprio usuário também consta na quantidade)
+          example: 2
+        qt_nao_usuarios:
+          type: integer
+          description: Quantidade de Jogadores únicos não registrados no site
+          example: 3
+    inline_response_200_9:
+      type: object
+      properties:
+        height:
+          type: integer
+          description: Altura da imagem gerada
+          example: 1080
+        width:
+          type: integer
+          description: Largura da imagem gerada
+          example: 1080
+        imagem:
+          type: string
+          description: Imagem PNG em string Base 64
+    Jogo_mecanicas:
+      type: object
+      properties:
+        id_mecanica:
+          type: integer
+        nm_mecanica:
+          type: string
+    Jogo_categorias:
+      type: object
+      properties:
+        id_categoria:
+          type: integer
+        nm_categoria:
+          type: string
+    Jogo_temas:
+      type: object
+      properties:
+        id_tema:
+          type: integer
+        nm_tema:
+          type: string
+    Jogo_artistas:
+      type: object
+      properties:
+        id_profissional:
+          type: integer
+        nm_profissional:
+          type: string
+    JogoUsuario_tags:
+      type: object
+      properties:
+        id_usuario_tag:
+          type: integer
+        nm_tag:
+          type: string
+          readOnly: true
+  parameters:
+    pageParam:
+      name: page
+      in: query
+      description: Pagina atual
+      required: false
+      style: form
+      explode: true
+      schema:
+        type: integer
+        default: 1
+    rowsParam:
+      name: rows
+      in: query
+      description: Quantidade de Registros a retornar (máximo 100)
+      required: false
+      style: form
+      explode: true
+      schema:
+        maximum: 100
+        minimum: 1
+        type: integer
+        default: 20
+    idJogoParam:
+      name: id_jogo
+      in: path
+      description: Id do jogo
+      required: true
+      style: simple
+      explode: false
+      schema:
+        type: integer
+  requestBodies:
+    UsuarioTagBody:
+      description: Objeto de Tag do Usuario
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UsuarioTag'
+      required: true
+    JogoUsuarioBody:
+      description: Objeto Jogo Usuario
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/JogoUsuario'
+      required: true
+    PartidaBody:
+      description: Objeto Partida
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Partida'
+      required: true
+    JogoBody:
+      description: Login de usuario
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Jogo'
+      required: true
+  securitySchemes:
+    oauth:
+      type: oauth2
+      description: Urls de Autorização e Token
+      flows:
+        authorizationCode:
+          authorizationUrl: https://ludopedia.com.br/oauth
+          tokenUrl: https://ludopedia.com.br/tokenrequest
+          scopes:
+            usuarios:read: Ler dados de Usuário
+            usuarios:write: Alterar dados de Usuário
