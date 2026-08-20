@@ -18,6 +18,7 @@ export interface GameData {
   ludoId?: string;
   ludoRating?: number;
   weight?: number; // 1-5
+  playtime?: number; // tempo de partida
   domains?: string[]; // categories/mechanics
 }
 

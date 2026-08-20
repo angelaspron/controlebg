@@ -181,14 +181,13 @@ export function useCollection() {
       // Removido: if (game.bggId) continue; para permitir atualização forçada
 
       try {
-        // Função helper com retry para Rate Limit (429)
         const fetchWithRetry = async (url: string) => {
-          let res = await fetch(url, { headers: { 'Authorization': 'Bearer cdbac8cf-91ac-4af7-9d1f-266544061d52' } });
+          let res = await fetch(url);
           let retryCount = 0;
-          while (res.status === 429 && retryCount < 5) {
-            console.log('BGG Rate Limit alcançado. Aguardando 5 segundos...');
+          while ((res.status === 429 || res.status === 202) && retryCount < 5) {
+            console.log(`BGG retornou status ${res.status}. Aguardando 5 segundos...`);
             await new Promise(r => setTimeout(r, 5000));
-            res = await fetch(url, { headers: { 'Authorization': 'Bearer cdbac8cf-91ac-4af7-9d1f-266544061d52' } });
+            res = await fetch(url);
             retryCount++;
           }
           return res;
@@ -306,7 +305,8 @@ export function useCollection() {
                 const newGames = [...prev];
                 const index = newGames.findIndex(g => g.id === game.id);
                 if (index !== -1) {
-                  let inferredType = newGames[index].type;
+                  const current = newGames[index];
+                  let inferredType = current.type;
                   
                   const lName = ((match && match.nm_jogo) || detailJson.nm_jogo || '').toLowerCase();
                   const lTipo = String((match && match.tp_jogo) || detailJson.tp_jogo || (match && match.nm_tipo_jogo) || detailJson.nm_tipo_jogo || (match && match.tipo_jogo) || detailJson.tipo_jogo || '').toLowerCase();
@@ -325,10 +325,32 @@ export function useCollection() {
                      inferredType = lTipo.charAt(0).toUpperCase() + lTipo.slice(1);
                   }
 
-                  const current = newGames[index];
+                  console.log(`Ludopedia JSON detalhado para ${game.name}:`, detailJson);
+                  let inferredBggId = current.bggId;
+                  
+                  // Tenta procurar em vários campos possíveis
+                  if (detailJson.link_bgg) {
+                    const bggMatch = String(detailJson.link_bgg).match(/boardgamegeek\.com\/boardgame\/(\d+)/);
+                    if (bggMatch) inferredBggId = bggMatch[1];
+                  }
+                  if (!inferredBggId && detailJson.bgg_id) {
+                    inferredBggId = String(detailJson.bgg_id);
+                  }
+                  if (!inferredBggId && detailJson.id_bgg) {
+                    inferredBggId = String(detailJson.id_bgg);
+                  }
+                  if (!inferredBggId && detailJson.links && Array.isArray(detailJson.links)) {
+                     const bggLink = detailJson.links.find((l: any) => l.url && l.url.includes('boardgamegeek.com'));
+                     if (bggLink) {
+                        const bggMatch = String(bggLink.url).match(/boardgamegeek\.com\/boardgame\/(\d+)/);
+                        if (bggMatch) inferredBggId = bggMatch[1];
+                     }
+                  }
+
                   newGames[index] = {
                     ...current,
                     ludoId: ludoId || current.ludoId,
+                    bggId: inferredBggId || current.bggId,
                     thumbnail: (match && match.thumb) || detailJson.imagem || current.thumbnail || undefined,
                     image: detailJson.imagem || current.image || undefined,
                     yearPublished: (match && match.ano_publicacao ? parseInt(match.ano_publicacao) : undefined) || current.yearPublished,
@@ -365,16 +387,31 @@ export function useCollection() {
             byBggId: product(where: {bgg_id: {_eq: $bggId}}, limit: 1) {
               id
               name
+              bgg_rating
+              bgg_weight
+              min_players
+              max_players
+              playing_time
               prices { name, price_to, available }
             }
             byNameExact: product(where: {name: {_ilike: $nameExact}, type: {_eq: game}}, limit: 1) {
               id
               name
+              bgg_rating
+              bgg_weight
+              min_players
+              max_players
+              playing_time
               prices { name, price_to, available }
             }
             byNameLike: product(where: {name: {_ilike: $nameLike}, type: {_eq: game}}, limit: 1) {
               id
               name
+              bgg_rating
+              bgg_weight
+              min_players
+              max_players
+              playing_time
               prices { name, price_to, available }
             }
           }
@@ -418,33 +455,42 @@ export function useCollection() {
               product = json.data.byNameLike[0];
             }
             
-            if (product && product.prices && product.prices.length > 0) {
+            if (product) {
               const forbiddenWords = ['insert', 'dashboard', 'playmat', 'luva', 'sleeve', 'organizador', 'moeda', 'promo', 'expansão', 'combo', 'usado', 'kit'];
+              let minPrice: number | null = null;
               
-              const validPrices = product.prices
-                .filter((p: any) => {
-                  if (p.available === false) return false;
-                  if (!p.price_to || p.price_to <= 0) return false;
-                  const nameLower = p.name ? p.name.toLowerCase() : '';
-                  return !forbiddenWords.some(word => nameLower.includes(word));
-                })
-                .map((p: any) => p.price_to);
-                
-              let minPrice = validPrices.length > 0 ? Math.min(...validPrices) : null;
-              
-              if (minPrice !== undefined && minPrice !== null) {
-                setGames(prev => {
-                  const newGames = [...prev];
-                  const index = newGames.findIndex(g => g.id === game.id);
-                  if (index !== -1) {
-                    newGames[index] = {
-                      ...newGames[index],
-                      value: minPrice
-                    };
-                  }
-                  return newGames;
-                });
+              if (product.prices && product.prices.length > 0) {
+                const validPrices = product.prices
+                  .filter((p: any) => {
+                    if (p.available === false) return false;
+                    if (!p.price_to || p.price_to <= 0) return false;
+                    const nameLower = p.name ? p.name.toLowerCase() : '';
+                    return !forbiddenWords.some(word => nameLower.includes(word));
+                  })
+                  .map((p: any) => p.price_to);
+                  
+                if (validPrices.length > 0) {
+                  minPrice = Math.min(...validPrices);
+                }
               }
+              
+              setGames(prev => {
+                const newGames = [...prev];
+                const index = newGames.findIndex(g => g.id === game.id);
+                if (index !== -1) {
+                  const current = newGames[index];
+                  newGames[index] = {
+                    ...current,
+                    value: minPrice !== null ? minPrice : current.value,
+                    rating: product.bgg_rating ? parseFloat(product.bgg_rating) : current.rating,
+                    weight: product.bgg_weight ? parseFloat(product.bgg_weight) : current.weight,
+                    minPlayers: product.min_players ? parseInt(product.min_players) : current.minPlayers,
+                    maxPlayers: product.max_players ? parseInt(product.max_players) : current.maxPlayers,
+                    playtime: product.playing_time ? parseInt(product.playing_time) : current.playtime,
+                  };
+                }
+                return newGames;
+              });
             }
           }
         }
@@ -724,6 +770,9 @@ export function useCollection() {
       'Ano de Publicação': g.yearPublished || '',
       'Nota BGG': g.rating ? g.rating.toFixed(1) : '',
       'BGG ID': g.bggId || '',
+      'Min Jogadores': g.minPlayers || '',
+      'Max Jogadores': g.maxPlayers || '',
+      'Tempo de Partida': g.playtime || '',
     })));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Coleção");

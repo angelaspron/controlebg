@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Gamepad2, LogIn } from 'lucide-react';
+import { LogIn } from 'lucide-react';
 import '../index.css';
 
 interface LoginScreenProps {
@@ -18,9 +18,9 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
 
   return (
     <div className="app-container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: 'var(--bg-color)' }}>
-      <div className="glass-panel animate-fade-in" style={{ padding: '3rem', maxWidth: '400px', width: '100%', textAlign: 'center', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-        <div style={{ background: 'rgba(99, 102, 241, 0.1)', padding: '1rem', borderRadius: '50%', width: 'fit-content', margin: '0 auto', boxShadow: '0 0 20px rgba(99, 102, 241, 0.2)' }}>
-          <Gamepad2 size={48} color="#818cf8" />
+      <div className="glass-panel animate-fade-in" style={{ padding: '3rem', maxWidth: '450px', width: '100%', textAlign: 'center', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+        <div style={{ margin: '0 auto', display: 'flex', justifyContent: 'center' }}>
+          <img src="/logo.png" alt="Boardgame Manager Logo" style={{ width: '350px', maxWidth: '100%', height: 'auto', objectFit: 'contain', filter: 'drop-shadow(0px 0px 8px rgba(255,255,255,0.2))' }} />
         </div>
         
         <div>

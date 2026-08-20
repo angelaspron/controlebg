@@ -2,7 +2,6 @@ import { useState, useMemo, useEffect } from 'react';
 import { Gamepad2, Upload, Trash2, Search, Plus, Settings, DownloadCloud, FileSpreadsheet, PieChart, FileJson, Eye, EyeOff } from 'lucide-react';
 import { useCollection } from './hooks/useCollection';
 import { GameCard } from './components/GameCard';
-import { MeepleIcon } from './components/MeepleIcon';
 import { AddGameModal } from './components/AddGameModal';
 import { EditGameModal } from './components/EditGameModal';
 import { SettingsModal } from './components/SettingsModal';
@@ -29,6 +28,7 @@ function App() {
   const [selectedGameIds, setSelectedGameIds] = useState<Set<string>>(new Set());
   const [showFinancials, setShowFinancials] = useState(true);
   const [username, setUsername] = useState<string | null>(() => localStorage.getItem('boardgame_manager_username'));
+  const [isUpdating, setIsUpdating] = useState(false);
 
   const handleLogin = (user: string) => {
     localStorage.setItem('boardgame_manager_username', user);
@@ -59,13 +59,18 @@ function App() {
 
   const handleUpdateSelected = async (api: 'bgg' | 'ludo' | 'compara') => {
     if (selectedGameIds.size === 0) return;
+    setIsUpdating(true);
     const selectedGames = games.filter(g => selectedGameIds.has(g.id));
-    if (api === 'bgg') {
-      await fetchBGGDataForGames(selectedGames);
-    } else if (api === 'ludo') {
-      await fetchLudoDataForGames(selectedGames);
-    } else if (api === 'compara') {
-      await fetchComparaDataForGames(selectedGames);
+    try {
+      if (api === 'bgg') {
+        await fetchBGGDataForGames(selectedGames);
+      } else if (api === 'ludo') {
+        await fetchLudoDataForGames(selectedGames);
+      } else if (api === 'compara') {
+        await fetchComparaDataForGames(selectedGames);
+      }
+    } finally {
+      setIsUpdating(false);
     }
   };
 
@@ -167,16 +172,20 @@ function App() {
 
   return (
     <>
+    {isUpdating && (
+      <div className="modal-overlay" style={{zIndex: 9999}}>
+        <div className="glass-panel animate-scale-in" style={{textAlign: 'center', padding: '3rem', minWidth: '300px', display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
+          <Gamepad2 size={48} color="var(--accent)" style={{marginBottom: '1rem', animation: 'pulse 2s infinite'}} />
+          <h2 style={{margin: '0 0 1rem'}}>Atualizando Dados</h2>
+          <p style={{color: 'var(--text-muted)', margin: 0}}>Por favor, aguarde. Isso pode levar alguns minutos...</p>
+        </div>
+      </div>
+    )}
     <div className="app-container animate-fade-in">
       <header className="header glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', alignItems: 'center', padding: '2rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', width: '100%', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <div style={{ background: 'rgba(99, 102, 241, 0.2)', padding: '0.75rem', borderRadius: '50%', display: 'flex', boxShadow: '0 0 20px rgba(99, 102, 241, 0.3)' }}>
-              <MeepleIcon size={40} color="#a5b4fc" />
-            </div>
-            <h1 style={{ fontSize: '2.5rem', margin: 0, textShadow: '0 2px 10px rgba(165, 180, 252, 0.3)' }}>
-              Board Game Manager
-            </h1>
+            <img src="/logo.png" alt="Boardgame Manager Logo" style={{ width: '350px', maxWidth: '100%', height: 'auto', objectFit: 'contain', filter: 'drop-shadow(0px 0px 8px rgba(255,255,255,0.2))' }} />
           </div>
           
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
@@ -188,57 +197,55 @@ function App() {
             </button>
           </div>
         </div>
-        <div className="header-actions" style={{display: 'flex', flexDirection: 'column', gap: '0.75rem', width: '100%', alignItems: 'center'}}>
-          {/* Ações Principais */}
-          <div style={{display: 'flex', gap: '0.75rem', flexWrap: 'wrap', justifyContent: 'center'}}>
+        
+        <div className="header-actions" style={{display: 'flex', gap: '1rem', width: '100%', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center', padding: '1rem', background: 'rgba(0,0,0,0.1)', borderRadius: '12px'}}>
+          {/* Ações Básicas */}
+          <div style={{display: 'flex', gap: '0.5rem'}}>
             <button className="btn btn-primary" onClick={() => setIsAddModalOpen(true)} title="Adicionar um novo jogo manualmente à coleção" style={{ padding: '0.5rem 0.75rem', fontSize: '0.85rem' }}>
-              <Plus size={16} />
-              Novo Jogo
+              <Plus size={16} /> Novo Jogo
             </button>
-            <button className="btn" onClick={() => setIsReportsModalOpen(true)} title="Visualizar gráficos e estatísticas da sua coleção" style={{ padding: '0.5rem 0.75rem', fontSize: '0.85rem', background: 'var(--accent)', color: '#fff' }}>
-              <PieChart size={16} />
-              Estatísticas
+            <button className="btn" onClick={() => setIsReportsModalOpen(true)} title="Visualizar gráficos e estatísticas da sua coleção" style={{ padding: '0.5rem 0.75rem', fontSize: '0.85rem', background: 'var(--accent)', color: '#fff', borderColor: 'var(--accent)' }}>
+              <PieChart size={16} /> Estatísticas
             </button>
             <button className="btn" onClick={() => setIsSettingsModalOpen(true)} title="Ajustar configurações e mapeamento de colunas" style={{ padding: '0.5rem 0.75rem', fontSize: '0.85rem' }}>
-              <Settings size={16} />
-              Configurações
+              <Settings size={16} /> Configurações
             </button>
-            {games.length > 0 && (
-              <button className="btn" onClick={clearCollection} title="Apagar todos os jogos da sua coleção local" style={{ padding: '0.5rem 0.75rem', fontSize: '0.85rem', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.3)' }}>
-                <Trash2 size={16} />
-                Limpar Tudo
-              </button>
-            )}
           </div>
-          
-          {/* Ações de Dados (Importar/Exportar) */}
-          <div style={{display: 'flex', gap: '0.75rem', flexWrap: 'wrap', justifyContent: 'center'}}>
-            <button className="btn" onClick={() => setIsBGGModalOpen(true)} title="Importar ou sincronizar sua coleção do BoardGameGeek (BGG)" style={{ padding: '0.5rem 0.75rem', fontSize: '0.85rem' }}>
-              <DownloadCloud size={16} />
-              Importar BGG
+
+          <div style={{width: '1px', height: '24px', background: 'rgba(255,255,255,0.1)', margin: '0 0.5rem'}} className="divider" />
+
+          {/* Importações */}
+          <div style={{display: 'flex', gap: '0.5rem'}}>
+            <button className="btn" onClick={() => setIsBGGModalOpen(true)} title="Importar do BGG" style={{ padding: '0.5rem 0.75rem', fontSize: '0.85rem' }}>
+              <DownloadCloud size={16} /> BGG
             </button>
-            <button className="btn" onClick={() => setIsLudoModalOpen(true)} title="Importar ou sincronizar sua coleção da Ludopedia" style={{ padding: '0.5rem 0.75rem', fontSize: '0.85rem' }}>
-              <DownloadCloud size={16} />
-              Importar Ludo
+            <button className="btn" onClick={() => setIsLudoModalOpen(true)} title="Importar da Ludopedia" style={{ padding: '0.5rem 0.75rem', fontSize: '0.85rem' }}>
+              <DownloadCloud size={16} /> Ludopedia
             </button>
-            <button className="btn" onClick={() => document.getElementById('excel-upload')?.click()} title="Importar novos jogos de uma planilha Excel" style={{ padding: '0.5rem 0.75rem', fontSize: '0.85rem' }}>
-              <Upload size={16} />
-              Importar Excel
+            <button className="btn" onClick={() => document.getElementById('excel-upload')?.click()} title="Importar do Excel" style={{ padding: '0.5rem 0.75rem', fontSize: '0.85rem' }}>
+              <Upload size={16} /> Excel
             </button>
-            {games.length > 0 && (
-              <>
-                <button className="btn" onClick={exportToExcel} title="Exportar coleção atual para uma planilha Excel" style={{padding: '0.5rem 0.75rem', fontSize: '0.85rem'}}>
-                  <FileSpreadsheet size={16} />
-                  Exportar Excel
-                </button>
-                <button className="btn" onClick={exportToJson} title="Exportar coleção atual para um arquivo JSON (Backup)" style={{padding: '0.5rem 0.75rem', fontSize: '0.85rem'}}>
-                  <FileJson size={16} />
-                  Exportar JSON
-                </button>
-              </>
-            )}
             <input id="excel-upload" type="file" accept=".xlsx, .xls, .csv" onChange={handleFileUpload} style={{display: 'none'}} />
           </div>
+
+          {games.length > 0 && (
+            <>
+              <div style={{width: '1px', height: '24px', background: 'rgba(255,255,255,0.1)', margin: '0 0.5rem'}} className="divider" />
+              
+              {/* Exportações & Danger */}
+              <div style={{display: 'flex', gap: '0.5rem'}}>
+                <button className="btn" onClick={exportToExcel} title="Exportar para Excel" style={{padding: '0.5rem 0.75rem', fontSize: '0.85rem'}}>
+                  <FileSpreadsheet size={16} />
+                </button>
+                <button className="btn" onClick={exportToJson} title="Exportar Backup JSON" style={{padding: '0.5rem 0.75rem', fontSize: '0.85rem'}}>
+                  <FileJson size={16} />
+                </button>
+                <button className="btn" onClick={clearCollection} title="Limpar Coleção Local" style={{ padding: '0.5rem 0.75rem', fontSize: '0.85rem', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.3)', marginLeft: '0.5rem' }}>
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </header>
 
