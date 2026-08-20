@@ -1,0 +1,12 @@
+{
+  "rewrites": [
+    {
+      "source": "/ludo-api/:match*",
+      "destination": "https://ludopedia.com.br/api/v1/:match*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
