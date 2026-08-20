@@ -1,4 +1,3 @@
-import React from 'react';
 import { X, HelpCircle } from 'lucide-react';
 
 interface HelpModalProps {
