@@ -1,5 +1,5 @@
 import type { GameData } from '../types';
-import { Users, Star, Package, Pencil, Brain } from 'lucide-react';
+import { Users, Star, Package, Pencil, Brain, Trophy } from 'lucide-react';
 
 interface GameCardProps {
   game: GameData;
@@ -89,6 +89,12 @@ export function GameCard({ game, onEdit, isSelected, onToggleSelect }: GameCardP
             <div className="stat-item" title="Complexidade (Peso BGG)">
               <Brain size={14} color="#a855f7" />
               <span>Peso: {Number(game.weight.toFixed(2)).toString()}</span>
+            </div>
+          )}
+          {game.rank && (
+            <div className="stat-item" title="Posição no Ranking">
+              <Trophy size={14} color="#10b981" />
+              <span>Rank: #{game.rank}</span>
             </div>
           )}
           {game.rating && (

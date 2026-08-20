@@ -232,6 +232,18 @@ export function useCollection() {
                 const index = newGames.findIndex(g => g.id === game.id);
                 if (index !== -1) {
                   const current = newGames[index];
+                  
+                  let bggRank: number | undefined = undefined;
+                  const ranksObj = item.statistics?.ratings?.ranks?.rank;
+                  if (ranksObj) {
+                    const bgRankItem = Array.isArray(ranksObj) 
+                      ? ranksObj.find((r: any) => r['@_name'] === 'boardgame') 
+                      : ranksObj;
+                    if (bgRankItem && bgRankItem['@_value'] && bgRankItem['@_value'] !== 'Not Ranked') {
+                      bggRank = parseInt(bgRankItem['@_value']);
+                    }
+                  }
+
                   newGames[index] = {
                     ...current,
                     bggId: bggId || current.bggId,
@@ -242,6 +254,7 @@ export function useCollection() {
                     yearPublished: parseInt(item.yearpublished?.['@_value']) || current.yearPublished || undefined,
                     rating: parseFloat(item.statistics?.ratings?.average?.['@_value']) || current.rating || undefined,
                     weight: parseFloat(item.statistics?.ratings?.averageweight?.['@_value']) || current.weight || undefined,
+                    rank: !isNaN(bggRank as number) ? bggRank : current.rank,
                     domains: item.link ? item.link.filter((l: any) => l['@_type'] === 'boardgamecategory' || l['@_type'] === 'boardgamemechanic').map((l: any) => l['@_value']) : current.domains,
                   };
                 }
@@ -357,6 +370,7 @@ export function useCollection() {
                     minPlayers: (detailJson.qt_jogadores_min ? parseInt(detailJson.qt_jogadores_min) : undefined) || current.minPlayers,
                     maxPlayers: (detailJson.qt_jogadores_max ? parseInt(detailJson.qt_jogadores_max) : undefined) || current.maxPlayers,
                     ludoRating: (detailJson.vl_nota ? parseFloat(detailJson.vl_nota) : undefined) || current.ludoRating,
+                    rank: (detailJson.rank_jogo ? parseInt(detailJson.rank_jogo) : undefined) || (detailJson.posicao_rank ? parseInt(detailJson.posicao_rank) : undefined) || (detailJson.rank ? parseInt(detailJson.rank) : undefined) || (detailJson.rank_base ? parseInt(detailJson.rank_base) : undefined) || current.rank,
                     type: inferredType !== 'Base' && inferredType !== 'Desconhecido' ? inferredType : current.type,
                     domains: (detailJson.categorias || detailJson.mecanicas || detailJson.temas) ? [
                       ...(detailJson.categorias || []).map((c: any) => c.nm_categoria),
@@ -387,28 +401,34 @@ export function useCollection() {
             byBggId: product(where: {bgg_id: {_eq: $bggId}}, limit: 1) {
               id
               name
+              bgg_id
               bgg_rating
               bgg_weight
+              bgg_ranking
               min_players
               max_players
               playing_time
               prices { name, price_to, available }
             }
-            byNameExact: product(where: {name: {_ilike: $nameExact}, type: {_eq: game}}, limit: 1) {
+            byNameExact: product(where: {name: {_ilike: $nameExact}, type: {_in: [game, expansion]}}, limit: 1) {
               id
               name
+              bgg_id
               bgg_rating
               bgg_weight
+              bgg_ranking
               min_players
               max_players
               playing_time
               prices { name, price_to, available }
             }
-            byNameLike: product(where: {name: {_ilike: $nameLike}, type: {_eq: game}}, limit: 1) {
+            byNameLike: product(where: {name: {_ilike: $nameLike}, type: {_in: [game, expansion]}}, limit: 1) {
               id
               name
+              bgg_id
               bgg_rating
               bgg_weight
+              bgg_ranking
               min_players
               max_players
               playing_time
@@ -456,7 +476,8 @@ export function useCollection() {
             }
             
             if (product) {
-              const forbiddenWords = ['insert', 'dashboard', 'playmat', 'luva', 'sleeve', 'organizador', 'moeda', 'promo', 'expansão', 'combo', 'usado', 'kit'];
+              // Removido 'expansão' das palavras proibidas para permitir que expansões como Wyrmspan tenham seus preços atualizados
+              const forbiddenWords = ['insert', 'dashboard', 'playmat', 'luva', 'sleeve', 'organizador', 'moeda', 'promo', 'combo', 'usado', 'kit'];
               let minPrice: number | null = null;
               
               if (product.prices && product.prices.length > 0) {
@@ -487,6 +508,8 @@ export function useCollection() {
                     minPlayers: product.min_players ? parseInt(product.min_players) : current.minPlayers,
                     maxPlayers: product.max_players ? parseInt(product.max_players) : current.maxPlayers,
                     playtime: product.playing_time ? parseInt(product.playing_time) : current.playtime,
+                    bggId: product.bgg_id ? String(product.bgg_id) : current.bggId,
+                    rank: product.bgg_ranking ? parseInt(product.bgg_ranking) : current.rank,
                   };
                 }
                 return newGames;
@@ -672,6 +695,17 @@ export function useCollection() {
               bggType = 'Acessório';
             }
 
+            let bggRank: number | undefined = undefined;
+            const ranksObj = item.stats?.rating?.ranks?.rank;
+            if (ranksObj) {
+              const bgRankItem = Array.isArray(ranksObj) 
+                ? ranksObj.find((r: any) => r['@_name'] === 'boardgame') 
+                : ranksObj;
+              if (bgRankItem && bgRankItem['@_value'] && bgRankItem['@_value'] !== 'Not Ranked') {
+                bggRank = parseInt(bgRankItem['@_value']);
+              }
+            }
+
             return {
               id: `bgg-${item['@_objectid']}-${Date.now()}-${idx}`,
               bggId: item['@_objectid'],
@@ -685,7 +719,8 @@ export function useCollection() {
               yearPublished: item.yearpublished ? parseInt(item.yearpublished) : undefined,
               minPlayers: item.stats?.['@_minplayers'] ? parseInt(item.stats['@_minplayers']) : undefined,
               maxPlayers: item.stats?.['@_maxplayers'] ? parseInt(item.stats['@_maxplayers']) : undefined,
-              rating: item.stats?.rating?.average?.['@_value'] ? parseFloat(item.stats.rating.average['@_value']) : undefined
+              rating: item.stats?.rating?.average?.['@_value'] ? parseFloat(item.stats.rating.average['@_value']) : undefined,
+              rank: !isNaN(bggRank as number) ? bggRank : undefined
             };
           });
 
@@ -715,6 +750,7 @@ export function useCollection() {
                   minPlayers: newPrev[existingIndex].minPlayers || ng.minPlayers,
                   maxPlayers: newPrev[existingIndex].maxPlayers || ng.maxPlayers,
                   rating: newPrev[existingIndex].rating || ng.rating,
+                  rank: newPrev[existingIndex].rank || ng.rank,
                   type: (newPrev[existingIndex].type === 'Base' || newPrev[existingIndex].type === 'Desconhecido') && ng.type !== 'Base' ? ng.type : newPrev[existingIndex].type,
                 };
               } else {

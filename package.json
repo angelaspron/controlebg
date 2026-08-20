@@ -10,7 +10,8 @@
     "build": "tsc -b && vite build",
     "dist": "npm run build && electron-builder",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test-api": "node test.js"
   },
   "dependencies": {
     "fast-xml-parser": "^5.11.0",

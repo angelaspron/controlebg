@@ -20,6 +20,7 @@ export interface GameData {
   weight?: number; // 1-5
   playtime?: number; // tempo de partida
   domains?: string[]; // categories/mechanics
+  rank?: number; // posição no ranking (bgg_rank)
 }
 
 export interface ColumnMapping {

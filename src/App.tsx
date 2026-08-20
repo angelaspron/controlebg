@@ -17,6 +17,7 @@ function App() {
   const { games, columnMapping, setColumnMapping, isLoading, ludoToken, setLudoToken, processExcelUpload, fetchBGGCollection, fetchLudoCollection, clearCollection, exportToExcel, exportToJson, addGame, editGame, deleteGame, fetchBGGDataForGames, fetchLudoDataForGames, fetchComparaDataForGames } = useCollection();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('Todos');
+  const [rankFilter, setRankFilter] = useState('Todos');
   const [sortBy, setSortBy] = useState('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -98,7 +99,14 @@ function App() {
     const filtered = games.filter(game => {
       const matchesSearch = String(game.name || '').toLowerCase().includes(searchTerm.toLowerCase());
       const matchesStatus = statusFilter === 'Todos' || game.status === statusFilter;
-      return matchesSearch && matchesStatus;
+      
+      let matchesRank = true;
+      if (rankFilter === 'Top 100') matchesRank = game.rank ? game.rank <= 100 : false;
+      else if (rankFilter === 'Top 500') matchesRank = game.rank ? game.rank <= 500 : false;
+      else if (rankFilter === 'Top 1000') matchesRank = game.rank ? game.rank <= 1000 : false;
+      else if (rankFilter === 'Com Ranking') matchesRank = !!game.rank;
+
+      return matchesSearch && matchesStatus && matchesRank;
     });
 
     return filtered.sort((a, b) => {
@@ -129,10 +137,13 @@ function App() {
           const valB = typeof b.value === 'string' ? parseFloat(String(b.value).replace(',', '.')) : Number(b.value);
           comparison = (isNaN(valA) ? 0 : valA) - (isNaN(valB) ? 0 : valB);
           break;
+        case 'rank':
+          comparison = (a.rank || 999999) - (b.rank || 999999);
+          break;
       }
       return sortOrder === 'asc' ? comparison : -comparison;
     });
-  }, [games, searchTerm, statusFilter, sortBy, sortOrder]);
+  }, [games, searchTerm, statusFilter, rankFilter, sortBy, sortOrder]);
 
   useEffect(() => {
     // Limpar seleção quando a lista muda
@@ -342,11 +353,24 @@ function App() {
                 </select>
                 <select
                   className="search-input"
+                  style={{minWidth: '130px'}}
+                  value={rankFilter}
+                  onChange={e => setRankFilter(e.target.value)}
+                >
+                  <option value="Todos">Rank: Todos</option>
+                  <option value="Top 100">Top 100</option>
+                  <option value="Top 500">Top 500</option>
+                  <option value="Top 1000">Top 1000</option>
+                  <option value="Com Ranking">Com Ranking</option>
+                </select>
+                <select
+                  className="search-input"
                   style={{minWidth: '150px'}}
                   value={sortBy}
                   onChange={e => setSortBy(e.target.value)}
                 >
                   <option value="name">Nome</option>
+                  <option value="rank">Ranking</option>
                   <option value="added_date">Data de Adição</option>
                   <option value="weight">Peso (Complexidade)</option>
                   <option value="spend">Preço Pago</option>
