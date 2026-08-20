@@ -27,32 +27,38 @@ export function useCollection() {
 
   // Carregar do Local Storage na inicialização
   useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          setGames(parsed.filter(g => g && typeof g === 'object'));
-        } else {
-          console.warn('Dados no localStorage não são um array. Limpando...');
-          localStorage.removeItem(STORAGE_KEY);
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) {
+            setGames(parsed.filter(g => g && typeof g === 'object'));
+          } else {
+            console.warn('Dados no localStorage não são um array. Limpando...');
+            localStorage.removeItem(STORAGE_KEY);
+          }
+        } catch (e) {
+          console.error('Erro ao fazer parse dos dados locais', e);
         }
-      } catch (e) {
-        console.error('Erro ao fazer parse dos dados locais', e);
       }
-    }
+    } catch(e) {}
 
-    const savedMapping = localStorage.getItem(MAPPING_STORAGE_KEY);
-    if (savedMapping) {
-      try {
-        setColumnMapping(JSON.parse(savedMapping));
-      } catch (e) {
-        console.error('Erro ao fazer parse do mapping local', e);
+    try {
+      const savedMapping = localStorage.getItem(MAPPING_STORAGE_KEY);
+      if (savedMapping) {
+        try {
+          setColumnMapping(JSON.parse(savedMapping));
+        } catch (e) {
+          console.error('Erro ao fazer parse do mapping local', e);
+        }
       }
-    }
+    } catch(e) {}
 
-    const savedLudo = localStorage.getItem('boardgame_manager_ludo_token');
-    if (savedLudo) setLudoToken(savedLudo);
+    try {
+      const savedLudo = localStorage.getItem('boardgame_manager_ludo_token');
+      if (savedLudo) setLudoToken(savedLudo);
+    } catch(e) {}
 
     setIsLoading(false);
   }, []);
@@ -60,15 +66,19 @@ export function useCollection() {
   // Salvar no Local Storage sempre que games mudar
   useEffect(() => {
     if (!isLoading) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(games));
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(games));
+      } catch (e) {}
     }
   }, [games, isLoading]);
 
   // Salvar mapping no Local Storage
   useEffect(() => {
     if (!isLoading) {
-      localStorage.setItem(MAPPING_STORAGE_KEY, JSON.stringify(columnMapping));
-      localStorage.setItem('boardgame_manager_ludo_token', ludoToken);
+      try {
+        localStorage.setItem(MAPPING_STORAGE_KEY, JSON.stringify(columnMapping));
+        localStorage.setItem('boardgame_manager_ludo_token', ludoToken);
+      } catch (e) {}
     }
   }, [columnMapping, ludoToken, isLoading]);
 
@@ -791,7 +801,9 @@ export function useCollection() {
   const clearCollection = () => {
     if (window.confirm('Tem certeza que deseja apagar toda a coleção?')) {
       setGames([]);
-      localStorage.removeItem(STORAGE_KEY);
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+      } catch (e) {}
     }
   };
 

@@ -29,30 +29,48 @@ function App() {
   const [editingGame, setEditingGame] = useState<GameData | null>(null);
   const [selectedGameIds, setSelectedGameIds] = useState<Set<string>>(new Set());
   const [showFinancials, setShowFinancials] = useState(true);
-  const [username, setUsername] = useState<string | null>(() => localStorage.getItem('boardgame_manager_username'));
+  const [username, setUsername] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem('boardgame_manager_username');
+    } catch (e) {
+      return null;
+    }
+  });
   const [isUpdating, setIsUpdating] = useState(false);
   const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
 
   const handleLogin = (user: string) => {
-    localStorage.setItem('boardgame_manager_username', user);
+    try {
+      localStorage.setItem('boardgame_manager_username', user);
+    } catch (e) {}
     setUsername(user);
     
     // Check if onboarding is needed
-    if (!localStorage.getItem('boardgame_manager_help_seen')) {
+    try {
+      if (!localStorage.getItem('boardgame_manager_help_seen')) {
+        setIsHelpModalOpen(true);
+        localStorage.setItem('boardgame_manager_help_seen', 'true');
+      }
+    } catch (e) {
       setIsHelpModalOpen(true);
-      localStorage.setItem('boardgame_manager_help_seen', 'true');
     }
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('boardgame_manager_username');
+    try {
+      localStorage.removeItem('boardgame_manager_username');
+    } catch (e) {}
     setUsername(null);
   };
 
   useEffect(() => {
-    if (username && !localStorage.getItem('boardgame_manager_help_seen')) {
-      setIsHelpModalOpen(true);
-      localStorage.setItem('boardgame_manager_help_seen', 'true');
+    if (username) {
+      try {
+        if (!localStorage.getItem('boardgame_manager_help_seen')) {
+          setIsHelpModalOpen(true);
+          localStorage.setItem('boardgame_manager_help_seen', 'true');
+        }
+      } catch (e) {}
     }
   }, [username]);
 
@@ -238,7 +256,7 @@ function App() {
         
         <div className="header-actions" style={{display: 'flex', gap: '1rem', width: '100%', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center', padding: '1rem', background: 'rgba(0,0,0,0.1)', borderRadius: '12px'}}>
           {/* Ações Básicas */}
-          <div style={{display: 'flex', gap: '0.5rem'}}>
+          <div style={{display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'center'}}>
             <button className="btn btn-primary" onClick={() => setIsAddModalOpen(true)} title="Adicionar um novo jogo manualmente à coleção" style={{ padding: '0.5rem 0.75rem', fontSize: '0.85rem' }}>
               <Plus size={16} /> Novo Jogo
             </button>
@@ -253,7 +271,7 @@ function App() {
           <div style={{width: '1px', height: '24px', background: 'rgba(255,255,255,0.1)', margin: '0 0.5rem'}} className="divider" />
 
           {/* Importações */}
-          <div style={{display: 'flex', gap: '0.5rem'}}>
+          <div style={{display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'center'}}>
             <button className="btn" onClick={() => setIsBGGModalOpen(true)} title="Importar do BGG" style={{ padding: '0.5rem 0.75rem', fontSize: '0.85rem' }}>
               <DownloadCloud size={16} /> BGG
             </button>
@@ -271,7 +289,7 @@ function App() {
               <div style={{width: '1px', height: '24px', background: 'rgba(255,255,255,0.1)', margin: '0 0.5rem'}} className="divider" />
               
               {/* Exportações & Danger */}
-              <div style={{display: 'flex', gap: '0.5rem'}}>
+              <div style={{display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'center'}}>
                 <button className="btn" onClick={exportToExcel} title="Exportar para Excel" style={{padding: '0.5rem 0.75rem', fontSize: '0.85rem'}}>
                   <FileSpreadsheet size={16} />
                 </button>
