@@ -1,14 +1,16 @@
 import type { GameData } from '../types';
-import { Users, Star, Package, Pencil, Brain, Trophy } from 'lucide-react';
+import { Users, Star, Package, Pencil, Brain, Trophy, PlayCircle, Clock, UserCheck } from 'lucide-react';
 
 interface GameCardProps {
   game: GameData;
   onEdit: (game: GameData) => void;
   isSelected?: boolean;
+  isSelectionMode?: boolean;
   onToggleSelect?: () => void;
+  onClick?: (game: GameData) => void;
 }
 
-export function GameCard({ game, onEdit, isSelected, onToggleSelect }: GameCardProps) {
+export function GameCard({ game, onEdit, isSelected, isSelectionMode, onToggleSelect, onClick }: GameCardProps) {
   // Cores de status
   const isOwned = String(game.status || '').toLowerCase().includes('coleção') || String(game.status || '').toLowerCase().includes('sim');
   const statusColor = isOwned ? 'var(--status-owned)' : 'var(--status-sold)';
@@ -20,14 +22,19 @@ export function GameCard({ game, onEdit, isSelected, onToggleSelect }: GameCardP
   return (
     <div 
       className={`glass-panel game-card ${isSelected ? 'selected' : ''}`}
-      style={isSelected ? { outline: '2px solid #6366f1', transform: 'translateY(-4px)', boxShadow: '0 10px 25px -5px rgba(99, 102, 241, 0.4)' } : {}}
+      style={isSelected ? { outline: '2px solid #6366f1', transform: 'translateY(-4px)', boxShadow: '0 10px 25px -5px rgba(99, 102, 241, 0.4)' } : { cursor: onClick ? 'pointer' : 'default' }}
       onClick={(e) => {
+        e.stopPropagation();
         // Prevent click if clicking buttons inside
         if ((e.target as HTMLElement).closest('button')) return;
-        if (onToggleSelect) onToggleSelect();
+        if (isSelectionMode) {
+          if (onToggleSelect) onToggleSelect();
+        } else {
+          if (onClick) onClick(game);
+        }
       }}
     >
-      {onToggleSelect && (
+      {isSelectionMode && (
         <div style={{position: 'absolute', top: '10px', right: '10px', zIndex: 10}}>
           <input 
             type="checkbox" 
@@ -76,13 +83,19 @@ export function GameCard({ game, onEdit, isSelected, onToggleSelect }: GameCardP
 
         <div className="game-stats">
           {(game.minPlayers || game.maxPlayers) && (
-            <div className="stat-item" title="Jogadores Recomendados">
+            <div className="stat-item" title="Contagem de Jogadores (Mínimo - Máximo)">
               <Users size={14} />
               <span>
                 {game.minPlayers === game.maxPlayers
-                  ? game.minPlayers
+                  ? `${game.minPlayers}p`
                   : `${game.minPlayers || '?'} - ${game.maxPlayers || '?'}`}
               </span>
+            </div>
+          )}
+          {game.bggBestPlayers && (
+            <div className="stat-item" title={`Quantidade Ideal de Jogadores: ${game.bggBestPlayers}`} style={{ background: 'rgba(56, 189, 248, 0.12)', borderColor: 'rgba(56, 189, 248, 0.3)', color: '#38bdf8' }}>
+              <UserCheck size={14} color="#38bdf8" />
+              <span style={{ fontWeight: 600 }}>Ideal: {game.bggBestPlayers}</span>
             </div>
           )}
           {game.weight && (
@@ -107,6 +120,18 @@ export function GameCard({ game, onEdit, isSelected, onToggleSelect }: GameCardP
             <div className="stat-item" title="Nota Ludopedia">
               <Star size={14} fill="currentColor" color="#3b82f6" />
               <span>Ludo: {game.ludoRating.toFixed(1)}</span>
+            </div>
+          )}
+          {game.ludoMatches !== undefined && game.ludoMatches > 0 && (
+            <div className="stat-item" title="Suas Partidas na Ludopedia">
+              <PlayCircle size={14} color="#f43f5e" />
+              <span>{game.ludoMatches} partida{game.ludoMatches !== 1 ? 's' : ''}</span>
+            </div>
+          )}
+          {game.ludoAveragePlaytime !== undefined && game.ludoAveragePlaytime > 0 && (
+            <div className="stat-item" title="Tempo Médio das Suas Partidas">
+              <Clock size={14} color="#06b6d4" />
+              <span>{game.ludoAveragePlaytime} min</span>
             </div>
           )}
         </div>

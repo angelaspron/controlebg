@@ -23,6 +23,7 @@ export function EditGameModal({ game, isOpen, onClose, onSave, onDelete, onRefre
   const [soldValue, setSoldValue] = useState('');
   const [minPlayers, setMinPlayers] = useState('');
   const [maxPlayers, setMaxPlayers] = useState('');
+  const [bggBestPlayers, setBggBestPlayers] = useState('');
   const [weight, setWeight] = useState('');
   const [yearPublished, setYearPublished] = useState('');
   const [rating, setRating] = useState('');
@@ -40,6 +41,7 @@ export function EditGameModal({ game, isOpen, onClose, onSave, onDelete, onRefre
       setSoldValue(game.soldValue !== undefined && game.soldValue !== 0 ? String(game.soldValue) : '');
       setMinPlayers(game.minPlayers ? String(game.minPlayers) : '');
       setMaxPlayers(game.maxPlayers ? String(game.maxPlayers) : '');
+      setBggBestPlayers(game.bggBestPlayers || '');
       setWeight(game.weight ? String(game.weight) : '');
       setYearPublished(game.yearPublished ? String(game.yearPublished) : '');
       setRating(game.rating ? String(game.rating) : '');
@@ -62,6 +64,7 @@ export function EditGameModal({ game, isOpen, onClose, onSave, onDelete, onRefre
       soldValue: soldValue ? parseFloat(soldValue.replace(',', '.')) : 0,
       minPlayers: minPlayers ? parseInt(minPlayers) : undefined,
       maxPlayers: maxPlayers ? parseInt(maxPlayers) : undefined,
+      bggBestPlayers: bggBestPlayers.trim() || undefined,
       weight: weight ? parseFloat(weight.replace(',', '.')) : undefined,
       yearPublished: yearPublished ? parseInt(yearPublished) : undefined,
       rating: rating ? parseFloat(rating.replace(',', '.')) : undefined,
@@ -216,16 +219,20 @@ export function EditGameModal({ game, isOpen, onClose, onSave, onDelete, onRefre
             </div>
           )}
 
-          <div style={{ display: 'flex', gap: '1rem' }}>
-            <div style={{ flex: 1 }}>
+          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: '120px' }}>
               <label style={labelStyle}>Mín. Jogadores</label>
               <input type="number" min="1" value={minPlayers} onChange={e => setMinPlayers(e.target.value)} className="search-input" style={{ width: '100%' }} />
             </div>
-            <div style={{ flex: 1 }}>
+            <div style={{ flex: 1, minWidth: '120px' }}>
               <label style={labelStyle}>Máx. Jogadores</label>
               <input type="number" min="1" value={maxPlayers} onChange={e => setMaxPlayers(e.target.value)} className="search-input" style={{ width: '100%' }} />
             </div>
-            <div style={{ flex: 1 }}>
+            <div style={{ flex: 1.2, minWidth: '140px' }}>
+              <label style={labelStyle}>Jogadores Ideal (Ex: 2 ou 3-4)</label>
+              <input type="text" value={bggBestPlayers} onChange={e => setBggBestPlayers(e.target.value)} className="search-input" style={{ width: '100%' }} placeholder="Ex: 3-4" />
+            </div>
+            <div style={{ flex: 1, minWidth: '100px' }}>
               <label style={labelStyle}>Peso (1-5)</label>
               <input type="number" step="0.01" min="1" max="5" value={weight} onChange={e => setWeight(e.target.value)} className="search-input" style={{ width: '100%' }} />
             </div>
@@ -253,7 +260,7 @@ export function EditGameModal({ game, isOpen, onClose, onSave, onDelete, onRefre
               <div style={{ flex: 1, fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                 {game.rating && <div>⭐ BGG: {game.rating.toFixed(1)}</div>}
                 {game.yearPublished && <div>📅 {game.yearPublished}</div>}
-                {(game.minPlayers || game.maxPlayers) && <div>👥 {game.minPlayers}–{game.maxPlayers} jogadores</div>}
+                {(game.minPlayers || game.maxPlayers) && <div>👥 {game.minPlayers}–{game.maxPlayers} jogadores {game.bggBestPlayers ? `(Ideal: ${game.bggBestPlayers})` : ''}</div>}
               </div>
             </div>
           )}

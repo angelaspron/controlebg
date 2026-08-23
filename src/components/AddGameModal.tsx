@@ -22,6 +22,7 @@ export function AddGameModal({ isOpen, onClose, onAdd, ludoToken }: AddGameModal
   const [soldValue, setSoldValue] = useState('');
   const [minPlayers, setMinPlayers] = useState('');
   const [maxPlayers, setMaxPlayers] = useState('');
+  const [bggBestPlayers, setBggBestPlayers] = useState('');
   const [weight, setWeight] = useState('');
   const [yearPublished, setYearPublished] = useState('');
   const [rating, setRating] = useState('');
@@ -111,6 +112,7 @@ export function AddGameModal({ isOpen, onClose, onAdd, ludoToken }: AddGameModal
       soldValue: soldValue ? parseFloat(soldValue.replace(',', '.')) : 0,
       minPlayers: minPlayers ? parseInt(minPlayers) : undefined,
       maxPlayers: maxPlayers ? parseInt(maxPlayers) : undefined,
+      bggBestPlayers: bggBestPlayers.trim() || undefined,
       weight: weight ? parseFloat(weight.replace(',', '.')) : undefined,
       yearPublished: yearPublished ? parseInt(yearPublished) : undefined,
       rating: rating ? parseFloat(rating.replace(',', '.')) : undefined,
@@ -128,6 +130,7 @@ export function AddGameModal({ isOpen, onClose, onAdd, ludoToken }: AddGameModal
     setSoldValue('');
     setMinPlayers('');
     setMaxPlayers('');
+    setBggBestPlayers('');
     setWeight('');
     setYearPublished('');
     setRating('');
@@ -317,16 +320,20 @@ export function AddGameModal({ isOpen, onClose, onAdd, ludoToken }: AddGameModal
             </div>
           )}
 
-          <div style={{ display: 'flex', gap: '1rem' }}>
-            <div style={{ flex: 1 }}>
+          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: '120px' }}>
               <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-muted)' }}>Mín. Jogadores</label>
               <input type="number" min="1" value={minPlayers} onChange={e => setMinPlayers(e.target.value)} className="search-input" style={{ width: '100%' }} />
             </div>
-            <div style={{ flex: 1 }}>
+            <div style={{ flex: 1, minWidth: '120px' }}>
               <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-muted)' }}>Máx. Jogadores</label>
               <input type="number" min="1" value={maxPlayers} onChange={e => setMaxPlayers(e.target.value)} className="search-input" style={{ width: '100%' }} />
             </div>
-            <div style={{ flex: 1 }}>
+            <div style={{ flex: 1.2, minWidth: '140px' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-muted)' }}>Jogadores Ideal (Ex: 2 ou 3-4)</label>
+              <input type="text" value={bggBestPlayers} onChange={e => setBggBestPlayers(e.target.value)} className="search-input" style={{ width: '100%' }} placeholder="Ex: 3-4" />
+            </div>
+            <div style={{ flex: 1, minWidth: '100px' }}>
               <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-muted)' }}>Peso (1-5)</label>
               <input type="number" step="0.01" min="1" max="5" value={weight} onChange={e => setWeight(e.target.value)} className="search-input" style={{ width: '100%' }} />
             </div>

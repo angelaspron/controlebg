@@ -90,7 +90,8 @@
 
 .game-stats {
   display: flex;
-  gap: 1rem;
+  flex-wrap: wrap;
+  gap: 0.75rem;
   margin-top: 0.5rem;
 }
 
@@ -100,6 +101,7 @@
   gap: 0.35rem;
   font-size: 0.85rem;
   color: #cbd5e1;
+  white-space: nowrap;
 }
 
 .game-financials {

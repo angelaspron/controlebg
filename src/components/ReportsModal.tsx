@@ -109,6 +109,21 @@ export function ReportsModal({ isOpen, onClose, games }: ReportsModalProps) {
     return sorted.slice(0, 10);
   }, [games]);
 
+  // 6. Contagem Ideal de Jogadores
+  const bestPlayersData = useMemo(() => {
+    const counts: Record<string, number> = {};
+    games.forEach(g => {
+      if (g.bggBestPlayers) {
+        const bp = String(g.bggBestPlayers).trim();
+        if (bp) {
+          counts[bp] = (counts[bp] || 0) + 1;
+        }
+      }
+    });
+    const sorted = Object.keys(counts).map(k => ({ name: `${k} jogador${k === '1' ? '' : 'es'}`, quantidade: counts[k] })).sort((a, b) => b.quantidade - a.quantidade);
+    return sorted.slice(0, 8);
+  }, [games]);
+
   if (!isOpen) return null;
 
   return (
@@ -189,6 +204,23 @@ export function ReportsModal({ isOpen, onClose, games }: ReportsModalProps) {
                 </BarChart>
               </ResponsiveContainer>
               <div style={{textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-muted)'}}>*Requer dados do BGG no jogo</div>
+            </div>
+          </div>
+
+          {/* Contagem Ideal de Jogadores */}
+          <div className="glass-panel" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', background: 'rgba(255,255,255,0.02)' }}>
+            <h3 style={{ fontSize: '1.2rem', marginBottom: '1rem', color: 'var(--text-muted)' }}>Jogadores Ideal (Mais Comuns)</h3>
+            <div style={{ width: '100%', height: 300 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={bestPlayersData} margin={{ top: 20, right: 30, left: 0, bottom: 25 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                  <XAxis dataKey="name" stroke="rgba(255,255,255,0.5)" angle={-15} textAnchor="end" height={60} />
+                  <YAxis stroke="rgba(255,255,255,0.5)" allowDecimals={false} />
+                  <Tooltip contentStyle={{ backgroundColor: 'rgba(15,23,42,0.9)', borderColor: 'rgba(255,255,255,0.1)', color: '#fff' }} cursor={{fill: 'rgba(255,255,255,0.05)'}} />
+                  <Bar dataKey="quantidade" fill="#38bdf8" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+              <div style={{textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-muted)'}}>*Calculado via Ludopedia / Compara Jogos / BGG</div>
             </div>
           </div>
 

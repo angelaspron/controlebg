@@ -1,10 +1,11 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Dices, Upload, Trash2, Search, Plus, Settings, DownloadCloud, FileSpreadsheet, PieChart, FileJson, Eye, EyeOff } from 'lucide-react';
+import { Dices, Upload, Trash2, Search, Plus, Settings, DownloadCloud, FileSpreadsheet, PieChart, FileJson, Eye, EyeOff, CheckSquare } from 'lucide-react';
 import { useCollection } from './hooks/useCollection';
 import { GameCard } from './components/GameCard';
 import { AddGameModal } from './components/AddGameModal';
 import { EditGameModal } from './components/EditGameModal';
 import { SettingsModal } from './components/SettingsModal';
+import { GameDetailsModal } from './components/GameDetailsModal';
 import { BGGImportModal } from './components/BGGImportModal';
 import { LudoImportModal } from './components/LudoImportModal';
 import { ReportsModal } from './components/ReportsModal';
@@ -19,6 +20,7 @@ function App() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('Todos');
   const [rankFilter, setRankFilter] = useState('Todos');
+  const [playerFilter, setPlayerFilter] = useState('Todos');
   const [sortBy, setSortBy] = useState('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -38,6 +40,8 @@ function App() {
   });
   const [isUpdating, setIsUpdating] = useState(false);
   const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedGameDetails, setSelectedGameDetails] = useState<GameData | null>(null);
 
   const handleLogin = (user: string) => {
     try {
@@ -151,7 +155,28 @@ function App() {
       else if (rankFilter === 'Top 1000') matchesRank = game.rank ? game.rank <= 1000 : false;
       else if (rankFilter === 'Com Ranking') matchesRank = !!game.rank;
 
-      return matchesSearch && matchesStatus && matchesRank;
+      let matchesPlayers = true;
+      if (playerFilter === '1p') {
+        matchesPlayers = (game.minPlayers !== undefined && game.minPlayers <= 1 && (game.maxPlayers || 1) >= 1) || (!!game.bggBestPlayers && (game.bggBestPlayers.includes('1') || game.bggBestPlayers.toLowerCase().includes('solo')));
+      } else if (playerFilter === '2p') {
+        matchesPlayers = (game.minPlayers !== undefined && game.minPlayers <= 2 && (game.maxPlayers || 2) >= 2) || (!!game.bggBestPlayers && game.bggBestPlayers.includes('2'));
+      } else if (playerFilter === '3p') {
+        matchesPlayers = (game.minPlayers !== undefined && game.minPlayers <= 3 && (game.maxPlayers || 3) >= 3) || (!!game.bggBestPlayers && game.bggBestPlayers.includes('3'));
+      } else if (playerFilter === '4p') {
+        matchesPlayers = (game.minPlayers !== undefined && game.minPlayers <= 4 && (game.maxPlayers || 4) >= 4) || (!!game.bggBestPlayers && game.bggBestPlayers.includes('4'));
+      } else if (playerFilter === '5p+') {
+        matchesPlayers = (game.maxPlayers !== undefined && game.maxPlayers >= 5) || (!!game.bggBestPlayers && (game.bggBestPlayers.includes('5') || game.bggBestPlayers.includes('6') || game.bggBestPlayers.includes('+')));
+      } else if (playerFilter === 'ideal_2') {
+        matchesPlayers = !!game.bggBestPlayers && (game.bggBestPlayers === '2' || game.bggBestPlayers.includes('2'));
+      } else if (playerFilter === 'ideal_3') {
+        matchesPlayers = !!game.bggBestPlayers && (game.bggBestPlayers === '3' || game.bggBestPlayers.includes('3'));
+      } else if (playerFilter === 'ideal_4') {
+        matchesPlayers = !!game.bggBestPlayers && (game.bggBestPlayers === '4' || game.bggBestPlayers.includes('4'));
+      } else if (playerFilter === 'com_ideal') {
+        matchesPlayers = !!game.bggBestPlayers;
+      }
+
+      return matchesSearch && matchesStatus && matchesRank && matchesPlayers;
     });
 
     return filtered.sort((a, b) => {
@@ -399,9 +424,24 @@ function App() {
             )}
 
             <div className="filters-bar glass-panel" style={{padding: '1rem', display: 'flex', flexWrap: 'wrap', gap: '1rem'}}>
-              <div style={{display: 'flex', gap: '0.5rem'}}>
-                <button className="btn" onClick={selectAll} style={{fontSize: '0.9rem'}}>Selecionar Todos</button>
-                <button className="btn" onClick={deselectAll} style={{fontSize: '0.9rem'}}>Limpar Seleção</button>
+              <div style={{display: 'flex', gap: '0.5rem', alignItems: 'center'}}>
+                <button 
+                  className={`btn ${isSelectionMode ? 'btn-primary' : ''}`} 
+                  onClick={() => {
+                    setIsSelectionMode(!isSelectionMode);
+                    if (isSelectionMode) deselectAll();
+                  }} 
+                  style={{fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.5rem'}}
+                >
+                  <CheckSquare size={16} /> {isSelectionMode ? 'Cancelar Seleção' : 'Selecionar'}
+                </button>
+                {isSelectionMode && (
+                  <>
+                    <div style={{width: '1px', height: '16px', background: 'rgba(255,255,255,0.2)'}} />
+                    <button className="btn" onClick={selectAll} style={{fontSize: '0.9rem'}}>Selecionar Todos</button>
+                    <button className="btn" onClick={deselectAll} style={{fontSize: '0.9rem'}}>Limpar</button>
+                  </>
+                )}
               </div>
               <div style={{display: 'flex', alignItems: 'center', gap: '0.5rem', flexGrow: 1, position: 'relative', minWidth: '200px'}}>
                 <Search size={18} color="var(--text-muted)" style={{position: 'absolute', left: '1rem'}} />
@@ -439,6 +479,23 @@ function App() {
                 </select>
                 <select
                   className="search-input"
+                  style={{minWidth: '145px'}}
+                  value={playerFilter}
+                  onChange={e => setPlayerFilter(e.target.value)}
+                >
+                  <option value="Todos">👥 Jogadores: Todos</option>
+                  <option value="1p">Solo (1 jogador)</option>
+                  <option value="2p">2 jogadores</option>
+                  <option value="3p">3 jogadores</option>
+                  <option value="4p">4 jogadores</option>
+                  <option value="5p+">5+ jogadores</option>
+                  <option value="ideal_2">🎯 Ideal: 2 jogadores</option>
+                  <option value="ideal_3">🎯 Ideal: 3 jogadores</option>
+                  <option value="ideal_4">🎯 Ideal: 4 jogadores</option>
+                  <option value="com_ideal">✨ Com Qtd. Ideal</option>
+                </select>
+                <select
+                  className="search-input"
                   style={{minWidth: '150px'}}
                   value={sortBy}
                   onChange={e => setSortBy(e.target.value)}
@@ -469,7 +526,9 @@ function App() {
                   game={game} 
                   onEdit={setEditingGame} 
                   isSelected={selectedGameIds.has(game.id)}
+                  isSelectionMode={isSelectionMode}
                   onToggleSelect={() => toggleSelection(game.id)}
+                  onClick={(g) => setSelectedGameDetails(g)}
                 />
               ))}
             </div>
@@ -538,10 +597,15 @@ function App() {
       isOpen={isHelpModalOpen}
       onClose={() => setIsHelpModalOpen(false)}
     />
+
+    <GameDetailsModal 
+      game={selectedGameDetails} 
+      isOpen={selectedGameDetails !== null} 
+      onClose={() => setSelectedGameDetails(null)} 
+    />
   </>
   );
 }
 
 
 export default App;
-

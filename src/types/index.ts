@@ -21,6 +21,10 @@ export interface GameData {
   playtime?: number; // tempo de partida
   domains?: string[]; // categories/mechanics
   rank?: number; // posição no ranking (bgg_rank)
+  ludoMatches?: number; // quantidade de partidas registradas na ludopedia
+  ludoAveragePlaytime?: number; // tempo médio de partida (minutos) registrado na ludopedia
+  description?: string;
+  bggBestPlayers?: string;
 }
 
 export interface ColumnMapping {

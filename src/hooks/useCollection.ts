@@ -14,10 +14,8 @@ const defaultMapping: ColumnMapping = {
   value: ''
 };
 
-// A API do BGG agora suporta CORS nativamente, não precisamos de proxy.
-function bggUrl(path: string) {
-  return `https://boardgamegeek.com/xmlapi2/${path}`;
-}
+// Helper for BGG API URL
+const bggUrl = (path: string) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent('https://boardgamegeek.com/xmlapi2/' + path)}`;
 
 export function useCollection() {
   const [games, setGames] = useState<GameData[]>([]);
@@ -124,6 +122,10 @@ export function useCollection() {
             const mappedType = columnMapping.type ? getVal(row, [columnMapping.type]) : undefined;
             const mappedValue = columnMapping.value ? getVal(row, [columnMapping.value]) : undefined;
             const mappedSoldValue = columnMapping.soldValue ? getVal(row, [columnMapping.soldValue]) : undefined;
+            
+            const mappedMinP = getVal(row, ['min jogadores', 'min players', 'min_players', 'jogadores min', 'min']);
+            const mappedMaxP = getVal(row, ['max jogadores', 'max players', 'max_players', 'jogadores max', 'max']);
+            const mappedBestP = getVal(row, ['jogadores ideal', 'ideal', 'melhor com', 'best players', 'best_players', 'jogadores recomendados']);
 
             return {
               id: `local-${index}-${Date.now()}`,
@@ -133,6 +135,9 @@ export function useCollection() {
               type: mappedType || getVal(row, ['tipo', 'categoria', 'type']) || 'Base',
               value: toNumber(mappedValue !== undefined ? mappedValue : getVal(row, ['valor mercado', 'valor de mercado', 'mercado', 'market value', 'market'])),
               soldValue: toNumber(mappedSoldValue !== undefined ? mappedSoldValue : getVal(row, ['valor vendido', 'venda', 'sold'])),
+              minPlayers: mappedMinP ? parseInt(String(mappedMinP)) : undefined,
+              maxPlayers: mappedMaxP ? parseInt(String(mappedMaxP)) : undefined,
+              bggBestPlayers: mappedBestP ? String(mappedBestP).trim() : undefined,
             };
           });
 
@@ -183,6 +188,112 @@ export function useCollection() {
     });
   };
 
+  // Helper em background para buscar quantidade ideal no Compara Jogos (2ª tentativa)
+  const fetchBestPlayersFromCompara = async (name: string, bggId?: string): Promise<string | undefined> => {
+    try {
+      const bggIdInt = bggId ? parseInt(bggId) : 0;
+      const query = `
+        query GetGameBestPlayers($nameExact: String!, $bggId: Int!) {
+          byBggId: product(where: {bgg_id: {_eq: $bggId}}, limit: 1) { best_players }
+          byNameExact: product(where: {name: {_ilike: $nameExact}, type: {_in: [game, expansion]}}, limit: 1) { best_players }
+        }
+      `;
+      const res = await fetch('https://api.comparajogos.com.br/v1/graphql', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query, variables: { nameExact: name, bggId: isNaN(bggIdInt) ? 0 : bggIdInt } })
+      });
+      if (res.ok) {
+        const json = await res.json();
+        const p = json?.data?.byBggId?.[0] || json?.data?.byNameExact?.[0];
+        if (p && p.best_players) {
+          return String(p.best_players).trim();
+        }
+      }
+    } catch (e) {
+      console.log('Background Compara Jogos best_players error:', e);
+    }
+    return undefined;
+  };
+
+  // Helper em background para buscar quantidade ideal no BGG (3ª tentativa / último recurso)
+  const fetchBestPlayersFromBGG = async (bggId?: string, name?: string): Promise<string | undefined> => {
+    try {
+      const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_' });
+      let id = bggId;
+      if (!id && name) {
+        const searchRes = await fetch(bggUrl(`search?query=${encodeURIComponent(name)}&type=boardgame,boardgameexpansion&exact=1`));
+        if (searchRes.ok) {
+          const searchXml = await searchRes.text();
+          const searchObj = parser.parse(searchXml);
+          if (searchObj?.items?.item) {
+            const items = Array.isArray(searchObj.items.item) ? searchObj.items.item : [searchObj.items.item];
+            id = items[0]?.['@_id'];
+          }
+        }
+      }
+      if (id) {
+        const thingRes = await fetch(bggUrl(`thing?id=${id}&stats=1`));
+        if (thingRes.ok) {
+          const thingXml = await thingRes.text();
+          const thingObj = parser.parse(thingXml);
+          const itemNode = Array.isArray(thingObj?.items?.item) ? thingObj.items.item[0] : thingObj?.items?.item;
+          if (itemNode) {
+            const polls = itemNode.poll;
+            if (polls) {
+              const numPlayersPoll = Array.isArray(polls) ? polls.find((p: any) => p['@_name'] === 'suggested_numplayers') : (polls['@_name'] === 'suggested_numplayers' ? polls : null);
+              if (numPlayersPoll && numPlayersPoll.results) {
+                const results = Array.isArray(numPlayersPoll.results) ? numPlayersPoll.results : [numPlayersPoll.results];
+                let bestCounts: any[] = [];
+                for (const r of results) {
+                  const num = r['@_numplayers'];
+                  const resultObj = r.result;
+                  if (resultObj) {
+                    const resArray = Array.isArray(resultObj) ? resultObj : [resultObj];
+                    const bestVote = resArray.find((rv: any) => rv['@_value'] === 'Best');
+                    const bestCount = parseInt(bestVote?.['@_numvotes'] || '0');
+                    if (bestCount > 0) {
+                      bestCounts.push({ num: String(num), votes: bestCount });
+                    }
+                  }
+                }
+                if (bestCounts.length > 0) {
+                  const maxVotes = Math.max(...bestCounts.map(c => c.votes));
+                  const topCounts = bestCounts
+                    .filter(c => c.votes >= maxVotes * 0.6)
+                    .map(c => c.num)
+                    .sort((a, b) => parseInt(a.replace(/[^\d]/g, '')) - parseInt(b.replace(/[^\d]/g, '')));
+
+                  let ranges = [];
+                  let i = 0;
+                  while (i < topCounts.length) {
+                    let start = parseInt(topCounts[i].replace(/[^\d]/g, ''));
+                    let j = i;
+                    while (
+                      j + 1 < topCounts.length &&
+                      !topCounts[j].includes('+') &&
+                      !topCounts[j + 1].includes('+') &&
+                      parseInt(topCounts[j + 1].replace(/[^\d]/g, '')) === start + (j - i + 1)
+                    ) {
+                      j++;
+                    }
+                    if (i === j) ranges.push(topCounts[i]);
+                    else ranges.push(`${topCounts[i]}-${topCounts[j]}`);
+                    i = j + 1;
+                  }
+                  return ranges.join(', ');
+                }
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.log('Background BGG best_players error:', e);
+    }
+    return undefined;
+  };
+
   const fetchBGGDataForGames = async (gameList: GameData[]) => {
     const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_' });
 
@@ -230,12 +341,23 @@ export function useCollection() {
           const thingRes = await fetchWithRetry(bggUrl(`thing?id=${bggId}&stats=1`));
           if (thingRes.ok) {
             const thingText = await thingRes.text();
+            
+            // Extrair os nós dependendo se é xmlapi2 (<items><item>) ou xmlapi1 (<boardgames><boardgame>)
             const thingObj = parser.parse(thingText);
-
+            let itemNode = null;
+            
             if (thingObj?.items?.item) {
-              const item = Array.isArray(thingObj.items.item)
+              itemNode = Array.isArray(thingObj.items.item)
                 ? thingObj.items.item[0]
                 : thingObj.items.item;
+            } else if (thingObj?.boardgames?.boardgame) {
+              itemNode = Array.isArray(thingObj.boardgames.boardgame)
+                ? thingObj.boardgames.boardgame[0]
+                : thingObj.boardgames.boardgame;
+            }
+            
+            if (itemNode) {
+              let hasUpdated = false;
 
               setGames(prev => {
                 const newGames = [...prev];
@@ -243,34 +365,112 @@ export function useCollection() {
                 if (index !== -1) {
                   const current = newGames[index];
                   
+                  // Rank
                   let bggRank: number | undefined = undefined;
-                  const ranksObj = item.statistics?.ratings?.ranks?.rank;
+                  const ranksObj = itemNode.statistics?.ratings?.ranks?.rank;
                   if (ranksObj) {
                     const bgRankItem = Array.isArray(ranksObj) 
                       ? ranksObj.find((r: any) => r['@_name'] === 'boardgame') 
-                      : ranksObj;
+                      : (ranksObj['@_name'] === 'boardgame' ? ranksObj : null);
                     if (bgRankItem && bgRankItem['@_value'] && bgRankItem['@_value'] !== 'Not Ranked') {
                       bggRank = parseInt(bgRankItem['@_value']);
                     }
                   }
 
+                  // Best Players
+                  let bestPlayersStr = undefined;
+                  const polls = itemNode.poll;
+                  if (polls) {
+                    const numPlayersPoll = Array.isArray(polls) ? polls.find((p: any) => p['@_name'] === 'suggested_numplayers') : (polls['@_name'] === 'suggested_numplayers' ? polls : null);
+                    if (numPlayersPoll && numPlayersPoll.results) {
+                      const results = Array.isArray(numPlayersPoll.results) ? numPlayersPoll.results : [numPlayersPoll.results];
+                      let bestCounts: any[] = [];
+                      for (const r of results) {
+                         const num = r['@_numplayers'];
+                         const resultObj = r.result;
+                         if (resultObj) {
+                           const resArray = Array.isArray(resultObj) ? resultObj : [resultObj];
+                           const bestVote = resArray.find((rv: any) => rv['@_value'] === 'Best');
+                           const recVote = resArray.find((rv: any) => rv['@_value'] === 'Recommended');
+                           const notRecVote = resArray.find((rv: any) => rv['@_value'] === 'Not Recommended');
+                           
+                           const bestCount = parseInt(bestVote?.['@_numvotes'] || '0');
+                           if (bestCount > 0) {
+                              bestCounts.push({ num: String(num), votes: bestCount });
+                           }
+                         }
+                      }
+                      
+                      if (bestCounts.length > 0) {
+                        const maxVotes = Math.max(...bestCounts.map(c => c.votes));
+                        // BGG UI usually shows "Best" for counts that have a high percentage of the max votes
+                        const topCounts = bestCounts
+                           .filter(c => c.votes >= maxVotes * 0.6)
+                           .map(c => c.num)
+                           .sort((a, b) => parseInt(a.replace('+', '')) - parseInt(b.replace('+', '')));
+
+                        let ranges = [];
+                        let i = 0;
+                        while(i < topCounts.length) {
+                           let start = parseInt(topCounts[i].replace('+', ''));
+                           let j = i;
+                           while(j + 1 < topCounts.length && parseInt(topCounts[j + 1].replace('+', '')) === start + (j - i + 1) && !topCounts[j].includes('+')) {
+                              j++;
+                           }
+                           if (i === j) ranges.push(topCounts[i]);
+                           else ranges.push(`${topCounts[i]}-${topCounts[j]}`);
+                           i = j + 1;
+                        }
+                        bestPlayersStr = ranges.join(', ');
+                      }
+                    }
+                  }
+
+                  // Description
+                  let description = undefined;
+                  if (itemNode.description) {
+                     if (typeof itemNode.description === 'string') {
+                        description = itemNode.description;
+                     } else if (typeof itemNode.description === 'object') {
+                        description = itemNode.description['#text'] || JSON.stringify(itemNode.description);
+                     }
+                  }
+
                   newGames[index] = {
                     ...current,
                     bggId: bggId || current.bggId,
-                    thumbnail: item.thumbnail || current.thumbnail || undefined,
-                    image: item.image || current.image || undefined,
-                    minPlayers: parseInt(item.minplayers?.['@_value']) || current.minPlayers || undefined,
-                    maxPlayers: parseInt(item.maxplayers?.['@_value']) || current.maxPlayers || undefined,
-                    yearPublished: parseInt(item.yearpublished?.['@_value']) || current.yearPublished || undefined,
-                    rating: parseFloat(item.statistics?.ratings?.average?.['@_value']) || current.rating || undefined,
-                    weight: parseFloat(item.statistics?.ratings?.averageweight?.['@_value']) || current.weight || undefined,
+                    thumbnail: itemNode.thumbnail || current.thumbnail || undefined,
+                    image: itemNode.image || current.image || undefined,
+                    minPlayers: parseInt(itemNode.minplayers?.['@_value'] || itemNode.minplayers) || current.minPlayers || undefined,
+                    maxPlayers: parseInt(itemNode.maxplayers?.['@_value'] || itemNode.maxplayers) || current.maxPlayers || undefined,
+                    yearPublished: parseInt(itemNode.yearpublished?.['@_value'] || itemNode.yearpublished) || current.yearPublished || undefined,
+                    rating: parseFloat(itemNode.statistics?.ratings?.average?.['@_value']) || current.rating || undefined,
+                    weight: parseFloat(itemNode.statistics?.ratings?.averageweight?.['@_value']) || current.weight || undefined,
                     rank: !isNaN(bggRank as number) ? bggRank : current.rank,
-                    domains: item.link ? item.link.filter((l: any) => l['@_type'] === 'boardgamecategory' || l['@_type'] === 'boardgamemechanic').map((l: any) => l['@_value']) : current.domains,
+                    description: description || current.description,
+                    bggBestPlayers: bestPlayersStr || current.bggBestPlayers
                   };
+                  
+                  // Extract domains
+                  const links = itemNode.link || itemNode.boardgamecategory || itemNode.boardgamemechanic;
+                  if (links) {
+                    const linksArray = Array.isArray(links) ? links : [links];
+                    const domains = linksArray
+                      .filter((l: any) => l['@_type'] === 'boardgamecategory' || l['@_type'] === 'boardgamemechanic')
+                      .map((l: any) => l['@_value']);
+                    if (domains.length > 0) newGames[index].domains = domains;
+                  }
+                  hasUpdated = true;
                 }
                 return newGames;
               });
+              
+              if (hasUpdated) {
+                alert(`Sucesso! O BGG enviou os dados atualizados de ${game.name}.`);
+              }
             }
+          } else {
+            alert(`Erro na API do BGG para ${game.name}: Status ${thingRes.status}. Pode ser que o BGG tenha bloqueado temporariamente por muitos acessos rápidos (limite de taxa).`);
           }
         }
 
@@ -321,58 +521,124 @@ export function useCollection() {
 
         if (ludoId) {
             const detailRes = await fetchWithRetry(`/ludo-api/jogos/${ludoId}`);
+            let matchStats: any = null;
+            try {
+               const matchRes = await fetchWithRetry(`/ludo-api/partidas/resumo?id_jogo=${ludoId}`);
+               if (matchRes.ok) {
+                 matchStats = await matchRes.json();
+               }
+            } catch (e) {
+               console.error('Erro ao buscar resumo de partidas', e);
+            }
+
             if (detailRes.ok) {
               const detailJson = await detailRes.json();
               
-              setGames(prev => {
-                const newGames = [...prev];
-                const index = newGames.findIndex(g => g.id === game.id);
-                if (index !== -1) {
-                  const current = newGames[index];
-                  let inferredType = current.type;
-                  
-                  const lName = ((match && match.nm_jogo) || detailJson.nm_jogo || '').toLowerCase();
-                  const lTipo = String((match && match.tp_jogo) || detailJson.tp_jogo || (match && match.nm_tipo_jogo) || detailJson.nm_tipo_jogo || (match && match.tipo_jogo) || detailJson.tipo_jogo || '').toLowerCase();
-                  
-                  if (lTipo === 'e' || lTipo === 'expansão' || lTipo === 'expansao' || lName.includes('expans') || lName.includes('expansion')) {
-                     inferredType = 'Expansão';
-                  } else if (lTipo === 'p' || lTipo === 'promo' || lName.includes('promo')) {
-                     inferredType = 'Promo';
-                  } else if (lTipo === 'a' || lTipo === 'acessório' || lTipo === 'acessorio' || lName.includes('acess')) {
-                     inferredType = 'Acessório';
-                  } else if (lTipo === 'b' || lTipo === 'base') {
-                     inferredType = 'Base';
-                  } else if (detailJson.id_jogo_base || detailJson.jogo_base) {
-                     inferredType = 'Expansão';
-                  } else if (lTipo && lTipo !== 'null' && lTipo !== 'undefined') {
-                     inferredType = lTipo.charAt(0).toUpperCase() + lTipo.slice(1);
+                  // Faz um web scraping amigável da página da Ludopedia para extrair a descrição,
+                  // já que a API pública não envia mais o campo descricao.
+                  let scrapedDesc = undefined;
+                  let scrapedBestPlayers = undefined;
+                  const ludoUrl = (match && match.link) || detailJson.link;
+                  if (ludoUrl) {
+                    try {
+                      // Usa o corsproxy.io para buscar o HTML da Ludopedia e extrair a descrição
+                      const htmlRes = await fetch(`https://corsproxy.io/?url=${encodeURIComponent(ludoUrl)}`);
+                      if (htmlRes.ok) {
+                         const parser = new DOMParser();
+                         const doc = parser.parseFromString(html, 'text/html');
+                         const descEl = doc.querySelector('#bloco-descricao-sm');
+                         if (descEl) {
+                            scrapedDesc = descEl.textContent?.replace(/\s+/g, ' ').trim();
+                         }
+                         
+                         // Tenta achar "Ideal: 4 a 5" ou "Ideal: 4" no HTML da Ludopedia
+                         const idealMatch = html.match(/Ideal:\s*([0-9]+(?:\s*[a-zA-Z-]+\s*[0-9]+)?)/i);
+                         if (idealMatch) {
+                            // Converte "4 a 5" para "4-5" para ficar no padrão do BGG
+                            scrapedBestPlayers = idealMatch[1].trim().replace(/\s+[a-zA-Z-]+\s+/, '-');
+                         }
+                      }
+                    } catch (e) {
+                      console.log('Erro ao raspar dados da Ludopedia', e);
+                    }
                   }
 
-                  console.log(`Ludopedia JSON detalhado para ${game.name}:`, detailJson);
-                  let inferredBggId = current.bggId;
+                  let ludoBestPlayers = scrapedBestPlayers;
+                  if (!ludoBestPlayers) {
+                    if (detailJson.qt_jogadores_ideal) ludoBestPlayers = String(detailJson.qt_jogadores_ideal).trim();
+                    else if (detailJson.jogadores_ideal) ludoBestPlayers = String(detailJson.jogadores_ideal).trim();
+                    else if (detailJson.qt_ideal) ludoBestPlayers = String(detailJson.qt_ideal).trim();
+                    else if (detailJson.ideal) ludoBestPlayers = String(detailJson.ideal).trim();
+                    else if (detailJson.descricao) {
+                      const descMatch = String(detailJson.descricao).match(/Ideal:\s*([0-9]+(?:\s*[a-zA-Z-]+\s*[0-9]+)?)/i);
+                      if (descMatch) {
+                        ludoBestPlayers = descMatch[1].trim().replace(/\s+[a-zA-Z-]+\s+/, '-');
+                      }
+                    }
+                  }
+
+                  let ludoDesc = scrapedDesc || detailJson.descricao || undefined;
+                  if (ludoDesc && !scrapedDesc) {
+                     ludoDesc = ludoDesc.replace(/<[^>]*>?/gm, '').replace(/&nbsp;/g, ' ').replace(/&#10;/g, '\n').trim();
+                  }
+
+                  // Resolução em background da quantidade ideal (1º Ludopedia -> 2º Compara Jogos -> 3º BGG)
+                  let finalBestPlayers = ludoBestPlayers;
+                  if (!finalBestPlayers) {
+                    finalBestPlayers = await fetchBestPlayersFromCompara(game.name, inferredBggId);
+                  }
+                  if (!finalBestPlayers) {
+                    finalBestPlayers = await fetchBestPlayersFromBGG(inferredBggId, game.name);
+                  }
                   
-                  // Tenta procurar em vários campos possíveis
-                  if (detailJson.link_bgg) {
-                    const bggMatch = String(detailJson.link_bgg).match(/boardgamegeek\.com\/boardgame\/(\d+)/);
-                    if (bggMatch) inferredBggId = bggMatch[1];
-                  }
-                  if (!inferredBggId && detailJson.bgg_id) {
-                    inferredBggId = String(detailJson.bgg_id);
-                  }
-                  if (!inferredBggId && detailJson.id_bgg) {
-                    inferredBggId = String(detailJson.id_bgg);
-                  }
-                  if (!inferredBggId && detailJson.links && Array.isArray(detailJson.links)) {
-                     const bggLink = detailJson.links.find((l: any) => l.url && l.url.includes('boardgamegeek.com'));
-                     if (bggLink) {
-                        const bggMatch = String(bggLink.url).match(/boardgamegeek\.com\/boardgame\/(\d+)/);
+                  setGames(prev => {
+                    const newGames = [...prev];
+                    const index = newGames.findIndex(g => g.id === game.id);
+                    if (index !== -1) {
+                      const current = newGames[index];
+                      let inferredType = current.type;
+                      
+                      const lName = ((match && match.nm_jogo) || detailJson.nm_jogo || '').toLowerCase();
+                      const lTipo = String((match && match.tp_jogo) || detailJson.tp_jogo || (match && match.nm_tipo_jogo) || detailJson.nm_tipo_jogo || (match && match.tipo_jogo) || detailJson.tipo_jogo || '').toLowerCase();
+                      
+                      if (lTipo === 'e' || lTipo === 'expansão' || lTipo === 'expansao' || lName.includes('expans') || lName.includes('expansion')) {
+                         inferredType = 'Expansão';
+                      } else if (lTipo === 'p' || lTipo === 'promo' || lName.includes('promo')) {
+                         inferredType = 'Promo';
+                      } else if (lTipo === 'a' || lTipo === 'acessório' || lTipo === 'acessorio' || lName.includes('acess')) {
+                         inferredType = 'Acessório';
+                      } else if (lTipo === 'b' || lTipo === 'base') {
+                         inferredType = 'Base';
+                      } else if (detailJson.id_jogo_base || detailJson.jogo_base) {
+                         inferredType = 'Expansão';
+                      } else if (lTipo && lTipo !== 'null' && lTipo !== 'undefined') {
+                         inferredType = lTipo.charAt(0).toUpperCase() + lTipo.slice(1);
+                      }
+
+                      let inferredBggId = current.bggId;
+                      
+                      // Tenta procurar em vários campos possíveis
+                      if (detailJson.link_bgg) {
+                        const bggMatch = String(detailJson.link_bgg).match(/boardgamegeek\.com\/boardgame\/(\d+)/);
                         if (bggMatch) inferredBggId = bggMatch[1];
-                     }
-                  }
-
-                  newGames[index] = {
-                    ...current,
-                    ludoId: ludoId || current.ludoId,
+                      }
+                      if (!inferredBggId && detailJson.bgg_id) {
+                        inferredBggId = String(detailJson.bgg_id);
+                      }
+                      if (!inferredBggId && detailJson.id_bgg) {
+                        inferredBggId = String(detailJson.id_bgg);
+                      }
+                      if (!inferredBggId && detailJson.links && Array.isArray(detailJson.links)) {
+                         const bggLink = detailJson.links.find((l: any) => l.url && l.url.includes('boardgamegeek.com'));
+                         if (bggLink) {
+                            const bggMatch = String(bggLink.url).match(/boardgamegeek\.com\/boardgame\/(\d+)/);
+                            if (bggMatch) inferredBggId = bggMatch[1];
+                         }
+                      }
+                      
+                      newGames[index] = {
+                        ...current,
+                        ludoId: ludoId || current.ludoId,
                     bggId: inferredBggId || current.bggId,
                     thumbnail: (match && match.thumb) || detailJson.imagem || current.thumbnail || undefined,
                     image: detailJson.imagem || current.image || undefined,
@@ -386,7 +652,11 @@ export function useCollection() {
                       ...(detailJson.categorias || []).map((c: any) => c.nm_categoria),
                       ...(detailJson.mecanicas || []).map((m: any) => m.nm_mecanica),
                       ...(detailJson.temas || []).map((t: any) => t.nm_tema)
-                    ] : current.domains
+                    ] : current.domains,
+                    ludoMatches: matchStats?.qt_partidas || current.ludoMatches,
+                    ludoAveragePlaytime: (matchStats?.vl_duracao && matchStats?.qt_partidas) ? Math.round(matchStats.vl_duracao / matchStats.qt_partidas) : current.ludoAveragePlaytime,
+                    description: ludoDesc || current.description,
+                    bggBestPlayers: finalBestPlayers || current.bggBestPlayers
                   };
                 }
                 return newGames;
@@ -411,36 +681,42 @@ export function useCollection() {
             byBggId: product(where: {bgg_id: {_eq: $bggId}}, limit: 1) {
               id
               name
+              description
               bgg_id
               bgg_rating
               bgg_weight
               bgg_ranking
               min_players
               max_players
+              best_players
               playing_time
               prices { name, price_to, available }
             }
             byNameExact: product(where: {name: {_ilike: $nameExact}, type: {_in: [game, expansion]}}, limit: 1) {
               id
               name
+              description
               bgg_id
               bgg_rating
               bgg_weight
               bgg_ranking
               min_players
               max_players
+              best_players
               playing_time
               prices { name, price_to, available }
             }
             byNameLike: product(where: {name: {_ilike: $nameLike}, type: {_in: [game, expansion]}}, limit: 1) {
               id
               name
+              description
               bgg_id
               bgg_rating
               bgg_weight
               bgg_ranking
               min_players
               max_players
+              best_players
               playing_time
               prices { name, price_to, available }
             }
@@ -486,6 +762,15 @@ export function useCollection() {
             }
             
             if (product) {
+              // Extract new fields from Compara Jogos if available
+              let comparaDesc = undefined;
+              if (product.description) {
+                comparaDesc = product.description.replace(/<[^>]*>?/gm, '').replace(/&nbsp;/g, ' ').replace(/&#10;/g, '\n').trim();
+              }
+              const comparaMinP = product.min_players || undefined;
+              const comparaMaxP = product.max_players || undefined;
+              const comparaBestP = product.best_players || undefined;
+
               // Removido 'expansão' das palavras proibidas para permitir que expansões como Wyrmspan tenham seus preços atualizados
               const forbiddenWords = ['insert', 'dashboard', 'playmat', 'luva', 'sleeve', 'organizador', 'moeda', 'promo', 'combo', 'usado', 'kit'];
               let minPrice: number | null = null;
@@ -504,6 +789,14 @@ export function useCollection() {
                   minPrice = Math.min(...validPrices);
                 }
               }
+
+              // Resolução em background da quantidade ideal:
+              // Se não tem da Ludopedia (1º), pega do Compara Jogos (2º), e se não tiver, busca no BGG (3º)
+              const existingGame = games.find(g => g.id === game.id);
+              let finalBestPlayers = existingGame?.bggBestPlayers || (comparaBestP ? String(comparaBestP).trim() : undefined);
+              if (!finalBestPlayers) {
+                finalBestPlayers = await fetchBestPlayersFromBGG((product.bgg_id && product.bgg_id > 0) ? String(product.bgg_id) : game.bggId, game.name);
+              }
               
               setGames(prev => {
                 const newGames = [...prev];
@@ -512,14 +805,16 @@ export function useCollection() {
                   const current = newGames[index];
                   newGames[index] = {
                     ...current,
-                    value: minPrice !== null ? minPrice : current.value,
-                    rating: product.bgg_rating ? parseFloat(product.bgg_rating) : current.rating,
-                    weight: product.bgg_weight ? parseFloat(product.bgg_weight) : current.weight,
-                    minPlayers: product.min_players ? parseInt(product.min_players) : current.minPlayers,
-                    maxPlayers: product.max_players ? parseInt(product.max_players) : current.maxPlayers,
-                    playtime: product.playing_time ? parseInt(product.playing_time) : current.playtime,
-                    bggId: product.bgg_id ? String(product.bgg_id) : current.bggId,
-                    rank: product.bgg_ranking ? parseInt(product.bgg_ranking) : current.rank,
+                    bggId: (product.bgg_id && product.bgg_id > 0) ? String(product.bgg_id) : current.bggId,
+                    rank: product.bgg_ranking || current.rank,
+                    weight: product.bgg_weight || current.weight,
+                    rating: product.bgg_rating || current.rating,
+                    minPlayers: comparaMinP || current.minPlayers,
+                    maxPlayers: comparaMaxP || current.maxPlayers,
+                    bggBestPlayers: finalBestPlayers || current.bggBestPlayers,
+                    playtime: product.playing_time || current.playtime,
+                    value: minPrice || current.value,
+                    description: comparaDesc || current.description
                   };
                 }
                 return newGames;
@@ -618,6 +913,7 @@ export function useCollection() {
               yearPublished: item.ano_publicacao ? parseInt(item.ano_publicacao) : undefined,
               thumbnail: item.thumb,
               ludoRating: item.vl_nota ? parseFloat(item.vl_nota) : undefined,
+              ludoMatches: item.qt_partidas ? parseInt(item.qt_partidas) : undefined,
             };
           });
 
@@ -637,6 +933,7 @@ export function useCollection() {
                   spend: newPrev[existingIndex].spend === 0 ? ng.spend : newPrev[existingIndex].spend,
                   yearPublished: newPrev[existingIndex].yearPublished || ng.yearPublished,
                   type: (newPrev[existingIndex].type === 'Base' || newPrev[existingIndex].type === 'Desconhecido') && ng.type !== 'Base' ? ng.type : newPrev[existingIndex].type,
+                  ludoMatches: newPrev[existingIndex].ludoMatches !== undefined ? newPrev[existingIndex].ludoMatches : ng.ludoMatches,
                 };
               } else {
                 newPrev.push(ng);
@@ -825,6 +1122,7 @@ export function useCollection() {
       'BGG ID': g.bggId || '',
       'Min Jogadores': g.minPlayers || '',
       'Max Jogadores': g.maxPlayers || '',
+      'Jogadores Ideal': g.bggBestPlayers || '',
       'Tempo de Partida': g.playtime || '',
     })));
     const wb = XLSX.utils.book_new();
