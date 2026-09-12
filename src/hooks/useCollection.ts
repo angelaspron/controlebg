@@ -381,7 +381,7 @@ export function useCollection() {
                     maxPlayers: (detailJson.qt_jogadores_max ? parseInt(detailJson.qt_jogadores_max) : undefined) || current.maxPlayers,
                     ludoRating: (detailJson.vl_nota ? parseFloat(detailJson.vl_nota) : undefined) || current.ludoRating,
                     rank: (detailJson.rank_jogo ? parseInt(detailJson.rank_jogo) : undefined) || (detailJson.posicao_rank ? parseInt(detailJson.posicao_rank) : undefined) || (detailJson.rank ? parseInt(detailJson.rank) : undefined) || (detailJson.rank_base ? parseInt(detailJson.rank_base) : undefined) || current.rank,
-                    type: inferredType !== 'Base' && inferredType !== 'Desconhecido' ? inferredType : current.type,
+                    type: inferredType || current.type,
                     domains: (detailJson.categorias || detailJson.mecanicas || detailJson.temas) ? [
                       ...(detailJson.categorias || []).map((c: any) => c.nm_categoria),
                       ...(detailJson.mecanicas || []).map((m: any) => m.nm_mecanica),
@@ -636,7 +636,7 @@ export function useCollection() {
                   status: newPrev[existingIndex].status === 'Desconhecido' ? ng.status : newPrev[existingIndex].status,
                   spend: newPrev[existingIndex].spend === 0 ? ng.spend : newPrev[existingIndex].spend,
                   yearPublished: newPrev[existingIndex].yearPublished || ng.yearPublished,
-                  type: (newPrev[existingIndex].type === 'Base' || newPrev[existingIndex].type === 'Desconhecido') && ng.type !== 'Base' ? ng.type : newPrev[existingIndex].type,
+                  type: ng.type || newPrev[existingIndex].type,
                 };
               } else {
                 newPrev.push(ng);
