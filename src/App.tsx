@@ -139,6 +139,7 @@ function App() {
   const normalizeType = (typeStr?: string) => {
     const lower = String(typeStr || '').toLowerCase().trim();
     if (lower.includes('expans') || lower.includes('expansion')) return 'Expansão';
+    if (lower.includes('promo')) return 'Promo';
     if (lower.includes('base') || lower.includes('jogo base')) return 'Base';
     if (lower.includes('acess') || lower.includes('accessory') || lower.includes('acessório')) return 'Acessório';
     return typeStr || 'Outros';
@@ -207,7 +208,7 @@ function App() {
       }
       return sortOrder === 'asc' ? comparison : -comparison;
     });
-  }, [games, searchTerm, statusFilter, rankFilter, sortBy, sortOrder]);
+  }, [games, searchTerm, statusFilter, typeFilter, rankFilter, sortBy, sortOrder]);
 
   useEffect(() => {
     // Limpar seleção quando a lista muda
