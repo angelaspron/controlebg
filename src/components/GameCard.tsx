@@ -17,6 +17,13 @@ export function GameCard({ game, onEdit, isSelected, onToggleSelect }: GameCardP
   const spendNum = typeof game.spend === 'string' ? parseFloat(String(game.spend).replace(',', '.')) : Number(game.spend);
   const isGiftOrZero = isNaN(spendNum) || spendNum <= 0;
 
+  // Lógica de visualização do tipo
+  const rawType = String(game.type || 'Base');
+  const lowerType = rawType.toLowerCase();
+  const isExpansion = lowerType.includes('expans') || lowerType.includes('expansion');
+  const isBase = lowerType.includes('base');
+  const typeClass = isExpansion ? 'game-type expansion' : isBase ? 'game-type base' : 'game-type';
+
   return (
     <div 
       className={`glass-panel game-card ${isSelected ? 'selected' : ''}`}
@@ -70,7 +77,7 @@ export function GameCard({ game, onEdit, isSelected, onToggleSelect }: GameCardP
       <div className="game-card-content">
         <h3 className="game-title" title={game.name}>{game.name}</h3>
         <div className="game-meta">
-          <span className="game-type">{game.type}</span>
+          <span className={typeClass}>{game.type || 'Base'}</span>
           {game.yearPublished && <span>({game.yearPublished})</span>}
         </div>
 

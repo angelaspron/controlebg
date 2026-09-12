@@ -133,10 +133,29 @@ function App() {
     }
   };
 
+  const [statusFilter, setStatusFilter] = useState('Todos');
+  const [typeFilter, setTypeFilter] = useState('Todos');
+  const [rankFilter, setRankFilter] = useState('Todos');
+
+  // Helper para normalizar o tipo
+  const normalizeType = (typeStr?: string) => {
+    const lower = String(typeStr || '').toLowerCase().trim();
+    if (lower.includes('expans') || lower.includes('expansion')) return 'Expansão';
+    if (lower.includes('base') || lower.includes('jogo base')) return 'Base';
+    if (lower.includes('acess') || lower.includes('accessory') || lower.includes('acessório')) return 'Acessório';
+    return typeStr || 'Outros';
+  };
+
   // Extrair lista de status únicos
   const availableStatuses = useMemo(() => {
     const statuses = new Set(games.map(g => g.status));
     return ['Todos', ...Array.from(statuses)];
+  }, [games]);
+
+  // Extrair lista de tipos únicos
+  const availableTypes = useMemo(() => {
+    const types = new Set(games.map(g => normalizeType(g.type)));
+    return ['Todos', ...Array.from(types)];
   }, [games]);
 
   // Filtrar e ordenar jogos
@@ -144,6 +163,8 @@ function App() {
     const filtered = games.filter(game => {
       const matchesSearch = String(game.name || '').toLowerCase().includes(searchTerm.toLowerCase());
       const matchesStatus = statusFilter === 'Todos' || game.status === statusFilter;
+      const gameNormalizedType = normalizeType(game.type);
+      const matchesType = typeFilter === 'Todos' || gameNormalizedType === typeFilter;
       
       let matchesRank = true;
       if (rankFilter === 'Top 100') matchesRank = game.rank ? game.rank <= 100 : false;
@@ -151,7 +172,7 @@ function App() {
       else if (rankFilter === 'Top 1000') matchesRank = game.rank ? game.rank <= 1000 : false;
       else if (rankFilter === 'Com Ranking') matchesRank = !!game.rank;
 
-      return matchesSearch && matchesStatus && matchesRank;
+      return matchesSearch && matchesStatus && matchesType && matchesRank;
     });
 
     return filtered.sort((a, b) => {
@@ -423,6 +444,16 @@ function App() {
                 >
                   {availableStatuses.map(status => (
                     <option key={status} value={status}>{status}</option>
+                  ))}
+                </select>
+                <select
+                  className="search-input"
+                  style={{minWidth: '130px'}}
+                  value={typeFilter}
+                  onChange={e => setTypeFilter(e.target.value)}
+                >
+                  {availableTypes.map(t => (
+                    <option key={t} value={t}>{t === 'Todos' ? 'Tipo: Todos' : t}</option>
                   ))}
                 </select>
                 <select
