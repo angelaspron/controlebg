@@ -133,9 +133,7 @@ function App() {
     }
   };
 
-  const [statusFilter, setStatusFilter] = useState('Todos');
   const [typeFilter, setTypeFilter] = useState('Todos');
-  const [rankFilter, setRankFilter] = useState('Todos');
 
   // Helper para normalizar o tipo
   const normalizeType = (typeStr?: string) => {
