@@ -27,19 +27,33 @@ export function GameCard({ game, onEdit, isSelected, onToggleSelect }: GameCardP
   return (
     <div 
       className={`glass-panel game-card ${isSelected ? 'selected' : ''}`}
-      style={isSelected ? { outline: '2px solid #6366f1', transform: 'translateY(-4px)', boxShadow: '0 10px 25px -5px rgba(99, 102, 241, 0.4)' } : {}}
+      style={{
+        cursor: 'pointer',
+        ...(isSelected ? { outline: '2px solid #6366f1', transform: 'translateY(-4px)', boxShadow: '0 10px 25px -5px rgba(99, 102, 241, 0.4)' } : {})
+      }}
       onClick={(e) => {
-        // Prevent click if clicking buttons inside
+        // Prevent opening modal if clicking buttons or checkbox inside
         if ((e.target as HTMLElement).closest('button')) return;
-        if (onToggleSelect) onToggleSelect();
+        if ((e.target as HTMLElement).closest('.card-checkbox-container')) return;
+        onEdit(game);
       }}
     >
       {onToggleSelect && (
-        <div style={{position: 'absolute', top: '10px', right: '10px', zIndex: 10}}>
+        <div 
+          className="card-checkbox-container"
+          style={{position: 'absolute', top: '10px', right: '10px', zIndex: 10, padding: '2px', cursor: 'pointer'}}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleSelect();
+          }}
+        >
           <input 
             type="checkbox" 
             checked={isSelected} 
-            readOnly
+            onChange={(e) => {
+              e.stopPropagation();
+              onToggleSelect();
+            }}
             style={{width: '20px', height: '20px', cursor: 'pointer', accentColor: '#6366f1'}}
           />
         </div>
