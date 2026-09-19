@@ -4,11 +4,12 @@ import { Users, Star, Package, Pencil, Brain, Trophy } from 'lucide-react';
 interface GameCardProps {
   game: GameData;
   onEdit: (game: GameData) => void;
+  onClickDetails?: (game: GameData) => void;
   isSelected?: boolean;
   onToggleSelect?: () => void;
 }
 
-export function GameCard({ game, onEdit, isSelected, onToggleSelect }: GameCardProps) {
+export function GameCard({ game, onEdit, onClickDetails, isSelected, onToggleSelect }: GameCardProps) {
   // Cores de status
   const isOwned = String(game.status || '').toLowerCase().includes('coleção') || String(game.status || '').toLowerCase().includes('sim');
   const statusColor = isOwned ? 'var(--status-owned)' : 'var(--status-sold)';
@@ -35,7 +36,11 @@ export function GameCard({ game, onEdit, isSelected, onToggleSelect }: GameCardP
         // Prevent opening modal if clicking buttons or checkbox inside
         if ((e.target as HTMLElement).closest('button')) return;
         if ((e.target as HTMLElement).closest('.card-checkbox-container')) return;
-        onEdit(game);
+        if (onClickDetails) {
+          onClickDetails(game);
+        } else {
+          onEdit(game);
+        }
       }}
     >
       {onToggleSelect && (

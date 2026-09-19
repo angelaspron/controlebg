@@ -4,6 +4,7 @@ import { useCollection } from './hooks/useCollection';
 import { GameCard } from './components/GameCard';
 import { AddGameModal } from './components/AddGameModal';
 import { EditGameModal } from './components/EditGameModal';
+import { GameDetailsModal } from './components/GameDetailsModal';
 import { SettingsModal } from './components/SettingsModal';
 import { BGGImportModal } from './components/BGGImportModal';
 import { LudoImportModal } from './components/LudoImportModal';
@@ -27,6 +28,7 @@ function App() {
   const [isLudoModalOpen, setIsLudoModalOpen] = useState(false);
   const [isReportsModalOpen, setIsReportsModalOpen] = useState(false);
   const [editingGame, setEditingGame] = useState<GameData | null>(null);
+  const [viewingGame, setViewingGame] = useState<GameData | null>(null);
   const [selectedGameIds, setSelectedGameIds] = useState<Set<string>>(new Set());
   const [showFinancials, setShowFinancials] = useState(true);
   const [username, setUsername] = useState<string | null>(() => {
@@ -498,6 +500,7 @@ function App() {
                   key={game.id} 
                   game={game} 
                   onEdit={setEditingGame} 
+                  onClickDetails={setViewingGame}
                   isSelected={selectedGameIds.has(game.id)}
                   onToggleSelect={() => toggleSelection(game.id)}
                 />
@@ -515,6 +518,13 @@ function App() {
     </div>
 
     {/* Modais fora do container animado para que position:fixed funcione em relação ao viewport */}
+    <GameDetailsModal
+      game={viewingGame}
+      isOpen={viewingGame !== null}
+      onClose={() => setViewingGame(null)}
+      onEdit={setEditingGame}
+    />
+
     <AddGameModal
       isOpen={isAddModalOpen}
       onClose={() => setIsAddModalOpen(false)}

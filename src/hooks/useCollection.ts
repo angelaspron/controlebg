@@ -266,6 +266,7 @@ export function useCollection() {
                     weight: parseFloat(item.statistics?.ratings?.averageweight?.['@_value']) || current.weight || undefined,
                     rank: !isNaN(bggRank as number) ? bggRank : current.rank,
                     domains: item.link ? item.link.filter((l: any) => l['@_type'] === 'boardgamecategory' || l['@_type'] === 'boardgamemechanic').map((l: any) => l['@_value']) : current.domains,
+                    description: item.description ? String(item.description).replace(/&#10;/g, '\n').replace(/&quot;/g, '"').replace(/&amp;/g, '&') : current.description,
                   };
                 }
                 return newGames;
@@ -386,7 +387,8 @@ export function useCollection() {
                       ...(detailJson.categorias || []).map((c: any) => c.nm_categoria),
                       ...(detailJson.mecanicas || []).map((m: any) => m.nm_mecanica),
                       ...(detailJson.temas || []).map((t: any) => t.nm_tema)
-                    ] : current.domains
+                    ] : current.domains,
+                    description: detailJson.ds_jogo || detailJson.descricao || detailJson.de_resumo || current.description,
                   };
                 }
                 return newGames;

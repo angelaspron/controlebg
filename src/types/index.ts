@@ -21,6 +21,7 @@ export interface GameData {
   playtime?: number; // tempo de partida
   domains?: string[]; // categories/mechanics
   rank?: number; // posição no ranking (bgg_rank)
+  description?: string; // resumo/descrição do jogo
 }
 
 export interface ColumnMapping {
