@@ -1,15 +1,24 @@
+import { memo } from 'react';
 import type { GameData } from '../types';
-import { Users, Star, Package, Pencil, Brain, Trophy } from 'lucide-react';
+import { Users, Star, Package, Pencil, Brain, Trophy, Award, Loader2 } from 'lucide-react';
 
 interface GameCardProps {
   game: GameData;
   onEdit: (game: GameData) => void;
   onClickDetails?: (game: GameData) => void;
   isSelected?: boolean;
-  onToggleSelect?: () => void;
+  isUpdating?: boolean;
+  onToggleSelect?: (id: string) => void;
 }
 
-export function GameCard({ game, onEdit, onClickDetails, isSelected, onToggleSelect }: GameCardProps) {
+export const GameCard = memo(function GameCard({ 
+  game, 
+  onEdit, 
+  onClickDetails, 
+  isSelected = false, 
+  isUpdating = false,
+  onToggleSelect 
+}: GameCardProps) {
   // Cores de status
   const isOwned = String(game.status || '').toLowerCase().includes('coleção') || String(game.status || '').toLowerCase().includes('sim');
   const statusColor = isOwned ? 'var(--status-owned)' : 'var(--status-sold)';
@@ -30,10 +39,10 @@ export function GameCard({ game, onEdit, onClickDetails, isSelected, onToggleSel
       className={`glass-panel game-card ${isSelected ? 'selected' : ''}`}
       style={{
         cursor: 'pointer',
+        position: 'relative',
         ...(isSelected ? { outline: '2px solid #6366f1', transform: 'translateY(-4px)', boxShadow: '0 10px 25px -5px rgba(99, 102, 241, 0.4)' } : {})
       }}
       onClick={(e) => {
-        // Prevent opening modal if clicking buttons or checkbox inside
         if ((e.target as HTMLElement).closest('button')) return;
         if ((e.target as HTMLElement).closest('.card-checkbox-container')) return;
         if (onClickDetails) {
@@ -43,13 +52,36 @@ export function GameCard({ game, onEdit, onClickDetails, isSelected, onToggleSel
         }
       }}
     >
+      {/* Indicador de carregamento individual quando em atualização de lote */}
+      {isUpdating && (
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(15, 23, 42, 0.75)',
+          backdropFilter: 'blur(3px)',
+          zIndex: 50,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '8px',
+          borderRadius: 'var(--border-radius)',
+        }}>
+          <Loader2 size={32} color="#6366f1" style={{ animation: 'spin 1s linear infinite' }} />
+          <span style={{ fontSize: '0.85rem', color: '#fff', fontWeight: 600 }}>Atualizando...</span>
+        </div>
+      )}
+
       {onToggleSelect && (
         <div 
           className="card-checkbox-container"
           style={{position: 'absolute', top: '10px', right: '10px', zIndex: 10, padding: '2px', cursor: 'pointer'}}
           onClick={(e) => {
             e.stopPropagation();
-            onToggleSelect();
+            onToggleSelect(game.id);
           }}
         >
           <input 
@@ -57,15 +89,25 @@ export function GameCard({ game, onEdit, onClickDetails, isSelected, onToggleSel
             checked={isSelected} 
             onChange={(e) => {
               e.stopPropagation();
-              onToggleSelect();
+              onToggleSelect(game.id);
             }}
             style={{width: '20px', height: '20px', cursor: 'pointer', accentColor: '#6366f1'}}
           />
         </div>
       )}
+
       <div className="game-card-image">
         {game.thumbnail ? (
-          <img src={game.thumbnail} alt={game.name} />
+          <img 
+            src={game.thumbnail} 
+            alt={game.name}
+            loading="lazy"
+            decoding="async"
+            onError={(e) => {
+              // Fallback gracioso se a URL da imagem falhar
+              (e.target as HTMLElement).style.display = 'none';
+            }}
+          />
         ) : (
           <div className="placeholder-img">
             <Package size={48} opacity={0.2} />
@@ -98,11 +140,16 @@ export function GameCard({ game, onEdit, onClickDetails, isSelected, onToggleSel
         <div className="game-meta">
           <span className={typeClass}>{game.type || 'Base'}</span>
           {game.yearPublished && <span>({game.yearPublished})</span>}
+          {game.honors && game.honors.length > 0 && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px', color: '#fbbf24', fontSize: '0.75rem' }} title={`${game.honors.length} Prêmios`}>
+              <Award size={13} /> {game.honors.length}
+            </span>
+          )}
         </div>
 
         <div className="game-stats">
           {(game.minPlayers || game.maxPlayers) && (
-            <div className="stat-item" title="Jogadores Recomendados">
+            <div className="stat-item" title={game.suggestedPlayers?.summary ? `Jogadores: ${game.minPlayers}-${game.maxPlayers} (${game.suggestedPlayers.summary})` : 'Jogadores'}>
               <Users size={14} />
               <span>
                 {game.minPlayers === game.maxPlayers
@@ -124,7 +171,7 @@ export function GameCard({ game, onEdit, onClickDetails, isSelected, onToggleSel
             </div>
           )}
           {game.rating && (
-            <div className="stat-item" title="Nota BGG">
+            <div className="stat-item" title={game.geekRating ? `Nota Média: ${game.rating.toFixed(1)} | Geek Rating: ${game.geekRating.toFixed(2)}` : 'Nota BGG'}>
               <Star size={14} fill="currentColor" color="#fbbf24" />
               <span>BGG: {game.rating.toFixed(1)}</span>
             </div>
@@ -152,5 +199,10 @@ export function GameCard({ game, onEdit, onClickDetails, isSelected, onToggleSel
       </div>
     </div>
   );
-}
-
+}, (prevProps, nextProps) => {
+  return (
+    prevProps.isSelected === nextProps.isSelected &&
+    prevProps.isUpdating === nextProps.isUpdating &&
+    prevProps.game === nextProps.game
+  );
+});

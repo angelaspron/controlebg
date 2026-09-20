@@ -1,7 +1,7 @@
-import { useState, useMemo, useEffect } from 'react';
-import { Dices, Upload, Trash2, Search, Plus, Settings, DownloadCloud, FileSpreadsheet, PieChart, FileJson, Eye, EyeOff } from 'lucide-react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
+import { Dices, Upload, Trash2, Search, Plus, Settings, DownloadCloud, FileSpreadsheet, PieChart, FileJson, Eye, EyeOff, Zap, X } from 'lucide-react';
 import { useCollection } from './hooks/useCollection';
-import { GameCard } from './components/GameCard';
+import { VirtualGameGrid } from './components/VirtualGameGrid';
 import { AddGameModal } from './components/AddGameModal';
 import { EditGameModal } from './components/EditGameModal';
 import { GameDetailsModal } from './components/GameDetailsModal';
@@ -16,7 +16,33 @@ import './index.css';
 import './components.css';
 
 function App() {
-  const { games, columnMapping, setColumnMapping, isLoading, ludoToken, setLudoToken, processExcelUpload, fetchBGGCollection, fetchLudoCollection, clearCollection, exportToExcel, exportToJson, processJsonUpload, addGame, editGame, deleteGame, fetchBGGDataForGames, fetchLudoDataForGames, fetchComparaDataForGames } = useCollection();
+  const { 
+    games, 
+    columnMapping, 
+    setColumnMapping, 
+    isLoading, 
+    ludoToken, 
+    setLudoToken, 
+    processExcelUpload, 
+    fetchBGGCollection, 
+    fetchLudoCollection, 
+    clearCollection, 
+    exportToExcel, 
+    exportToJson, 
+    processJsonUpload, 
+    addGame, 
+    editGame, 
+    deleteGame,
+    updateGamesParallel,
+    fetchBGGDataForGames, 
+    fetchLudoDataForGames, 
+    fetchComparaDataForGames,
+    isBatchUpdating,
+    batchProgress,
+    updatingGameIds,
+    cancelBatchUpdate,
+  } = useCollection();
+
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('Todos');
   const [rankFilter, setRankFilter] = useState('Todos');
@@ -38,7 +64,6 @@ function App() {
       return null;
     }
   });
-  const [isUpdating, setIsUpdating] = useState(false);
   const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
 
   const handleLogin = (user: string) => {
@@ -76,14 +101,23 @@ function App() {
     }
   }, [username]);
 
-  const toggleSelection = (id: string) => {
+  // Callbacks estáveis para isolar re-renderizações na grade
+  const toggleSelection = useCallback((id: string) => {
     setSelectedGameIds(prev => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-  };
+  }, []);
+
+  const handleEditGame = useCallback((game: GameData) => {
+    setEditingGame(game);
+  }, []);
+
+  const handleClickDetails = useCallback((game: GameData) => {
+    setViewingGame(game);
+  }, []);
 
   const selectAll = () => {
     setSelectedGameIds(new Set(filteredGames.map(g => g.id)));
@@ -93,20 +127,17 @@ function App() {
     setSelectedGameIds(new Set());
   };
 
-  const handleUpdateSelected = async (api: 'bgg' | 'ludo' | 'compara') => {
+  const handleUpdateSelected = async (api: 'parallel' | 'bgg' | 'ludo' | 'compara') => {
     if (selectedGameIds.size === 0) return;
-    setIsUpdating(true);
     const selectedGames = games.filter(g => selectedGameIds.has(g.id));
-    try {
-      if (api === 'bgg') {
-        await fetchBGGDataForGames(selectedGames);
-      } else if (api === 'ludo') {
-        await fetchLudoDataForGames(selectedGames);
-      } else if (api === 'compara') {
-        await fetchComparaDataForGames(selectedGames);
-      }
-    } finally {
-      setIsUpdating(false);
+    if (api === 'parallel') {
+      await updateGamesParallel(selectedGames);
+    } else if (api === 'bgg') {
+      await fetchBGGDataForGames(selectedGames);
+    } else if (api === 'ludo') {
+      await fetchLudoDataForGames(selectedGames);
+    } else if (api === 'compara') {
+      await fetchComparaDataForGames(selectedGames);
     }
   };
 
@@ -253,24 +284,49 @@ function App() {
 
   return (
     <>
-    {isUpdating && (
-      <div className="glass-panel animate-scale-in" style={{
+    {isBatchUpdating && batchProgress && (
+      <div className="glass-panel animate-fade-in" style={{
         position: 'fixed', 
         bottom: '2rem', 
         right: '2rem', 
         zIndex: 9999, 
-        padding: '1.5rem', 
-        display: 'flex', 
-        alignItems: 'center', 
-        gap: '1rem',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
-        border: '1px solid rgba(255, 255, 255, 0.1)',
-        borderRadius: '12px'
+        padding: '1.25rem 1.5rem', 
+        width: 'min(450px, calc(100vw - 4rem))',
+        boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
+        border: '1px solid rgba(99, 102, 241, 0.4)',
+        background: 'rgba(15, 23, 42, 0.94)',
+        backdropFilter: 'blur(16px)',
+        borderRadius: '16px'
       }}>
-        <Dices size={32} color="var(--accent)" style={{animation: 'pulse 2s infinite'}} />
-        <div>
-          <h3 style={{margin: '0 0 0.25rem', fontSize: '1.1rem'}}>Atualizando Dados</h3>
-          <p style={{color: 'var(--text-muted)', margin: 0, fontSize: '0.9rem'}}>Isso pode levar alguns minutos...</p>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem', gap: '0.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0 }}>
+            <Dices size={24} color="var(--accent)" style={{ animation: 'spin 3s linear infinite', flexShrink: 0 }} />
+            <div style={{ minWidth: 0 }}>
+              <h3 style={{ margin: 0, fontSize: '0.95rem', color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {batchProgress.currentGameName}
+              </h3>
+              <p style={{ color: 'var(--text-muted)', margin: 0, fontSize: '0.78rem' }}>
+                {batchProgress.activeApi} • {batchProgress.current}/{batchProgress.total} ({batchProgress.percentage}%)
+              </p>
+            </div>
+          </div>
+          <button 
+            onClick={cancelBatchUpdate}
+            className="btn"
+            style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', borderColor: 'rgba(239, 68, 68, 0.4)', color: '#f87171', flexShrink: 0 }}
+          >
+            <X size={13} /> Cancelar
+          </button>
+        </div>
+
+        <div style={{ width: '100%', height: '6px', background: 'rgba(255,255,255,0.1)', borderRadius: '3px', overflow: 'hidden' }}>
+          <div style={{
+            width: `${batchProgress.percentage}%`,
+            height: '100%',
+            background: 'linear-gradient(90deg, #6366f1, #ec4899)',
+            borderRadius: '3px',
+            transition: 'width 0.3s ease'
+          }} />
         </div>
       </div>
     )}
@@ -362,16 +418,18 @@ function App() {
           </div>
         ) : (
           <>
-            <div className="glass-panel" style={{marginBottom: '2rem', display: 'flex', gap: '2rem', flexWrap: 'wrap', position: 'relative', paddingTop: '2.5rem'}}>
+            {/* Painel de Resumo Financeiro Refatorado com CSS Grid (5 colunas desktop) */}
+            <div className="glass-panel financial-summary-grid">
               <button 
                 onClick={() => setShowFinancials(!showFinancials)} 
                 className="btn" 
-                style={{position: 'absolute', top: '1rem', right: '1rem', padding: '0.5rem', background: 'transparent', border: 'none', boxShadow: 'none'}}
+                style={{position: 'absolute', top: '0.75rem', right: '1rem', padding: '0.5rem', background: 'transparent', border: 'none', boxShadow: 'none'}}
                 title={showFinancials ? "Ocultar Totais Financeiros" : "Exibir Totais Financeiros"}
               >
                 {showFinancials ? <EyeOff size={20} color="var(--text-muted)" /> : <Eye size={20} color="var(--text-muted)" />}
               </button>
-              <div className="stat-box" style={{flex: 1, minWidth: '180px'}}>
+              
+              <div className="stat-box">
                 <div style={{color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '0.5rem'}}>Total de Jogos</div>
                 <div style={{fontSize: '2rem', fontWeight: 700}}>{games.length}</div>
                 <div style={{fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '0.5rem', display: 'flex', justifyContent: 'space-between'}}>
@@ -379,25 +437,29 @@ function App() {
                   <span>Vendido: <strong style={{color: '#fff'}}>{totals.totalSold}</strong></span>
                 </div>
               </div>
-              <div className="stat-box" style={{flex: 1}}>
+
+              <div className="stat-box">
                 <div style={{color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '0.5rem'}}>Total Gasto</div>
                 <div style={{fontSize: '2rem', fontWeight: 700, color: '#f87171'}}>
                   {showFinancials ? totals.totalGasto.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : 'R$ •••••'}
                 </div>
               </div>
-              <div className="stat-box" style={{flex: 1}}>
-                <div style={{color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '0.5rem'}}>Valor Atual da Coleção</div>
+
+              <div className="stat-box">
+                <div style={{color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '0.5rem'}}>Valor da Coleção</div>
                 <div style={{fontSize: '2rem', fontWeight: 700, color: '#34d399'}}>
                   {showFinancials ? totals.valorColecao.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : 'R$ •••••'}
                 </div>
               </div>
-              <div className="stat-box" style={{flex: 1, minWidth: '180px'}}>
+
+              <div className="stat-box">
                 <div style={{color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '0.5rem'}}>Valor Vendido</div>
                 <div style={{fontSize: '2rem', fontWeight: 700, color: '#60a5fa'}}>
                   {showFinancials ? totals.totalVendido.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : 'R$ •••••'}
                 </div>
               </div>
-              <div className="stat-box" style={{flex: 1, minWidth: '180px'}}>
+
+              <div className="stat-box">
                 <div style={{color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '0.5rem'}}>Lucro (Vendidos)</div>
                 <div style={{fontSize: '2rem', fontWeight: 700, color: (totals.totalVendido - totals.gastoVendido) >= 0 ? '#10b981' : '#ef4444'}}>
                   {showFinancials ? (totals.totalVendido - totals.gastoVendido).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : 'R$ •••••'}
@@ -406,16 +468,25 @@ function App() {
             </div>
 
             {selectedGameIds.size > 0 && (
-              <div className="glass-panel" style={{padding: '1rem', marginBottom: '2rem', display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap'}}>
-                <span style={{fontWeight: 'bold', marginRight: '1rem'}}>{selectedGameIds.size} jogos selecionados</span>
-                <button className="btn btn-primary" onClick={() => handleUpdateSelected('ludo')}>
-                  <DownloadCloud size={18} /> Atualizar via Ludopedia
+              <div className="glass-panel" style={{padding: '1rem', marginBottom: '2rem', display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap'}}>
+                <span style={{fontWeight: 'bold', marginRight: '0.5rem'}}>{selectedGameIds.size} jogos selecionados</span>
+                <button 
+                  className="btn btn-primary" 
+                  onClick={() => handleUpdateSelected('parallel')}
+                  title="Atualizar via BGG, Ludopedia e Compara Jogos simultaneamente em paralelo"
+                  style={{ background: 'linear-gradient(135deg, #6366f1, #a855f7)', borderColor: 'transparent' }}
+                  disabled={isBatchUpdating}
+                >
+                  <Zap size={18} /> Atualização Paralela Completa
                 </button>
-                <button className="btn btn-primary" onClick={() => handleUpdateSelected('bgg')}>
-                  <DownloadCloud size={18} /> Atualizar via BGG
+                <button className="btn" onClick={() => handleUpdateSelected('bgg')} disabled={isBatchUpdating}>
+                  <DownloadCloud size={16} /> BGG
                 </button>
-                <button className="btn btn-primary" onClick={() => handleUpdateSelected('compara')} style={{ background: 'var(--accent)' }}>
-                  <DownloadCloud size={18} /> Atualizar via Compara Jogos
+                <button className="btn" onClick={() => handleUpdateSelected('ludo')} disabled={isBatchUpdating}>
+                  <DownloadCloud size={16} /> Ludopedia
+                </button>
+                <button className="btn" onClick={() => handleUpdateSelected('compara')} disabled={isBatchUpdating}>
+                  <DownloadCloud size={16} /> Compara Jogos
                 </button>
               </div>
             )}
@@ -494,18 +565,15 @@ function App() {
               </div>
             </div>
 
-            <div className="games-grid">
-              {filteredGames.map(game => (
-                <GameCard 
-                  key={game.id} 
-                  game={game} 
-                  onEdit={setEditingGame} 
-                  onClickDetails={setViewingGame}
-                  isSelected={selectedGameIds.has(game.id)}
-                  onToggleSelect={() => toggleSelection(game.id)}
-                />
-              ))}
-            </div>
+            {/* Renderização Virtualizada de Alta Performance */}
+            <VirtualGameGrid
+              games={filteredGames}
+              selectedGameIds={selectedGameIds}
+              updatingGameIds={updatingGameIds}
+              onEditGame={handleEditGame}
+              onClickDetails={handleClickDetails}
+              onToggleSelect={toggleSelection}
+            />
 
             {filteredGames.length === 0 && (
               <div className="glass-panel" style={{textAlign: 'center', padding: '3rem', color: 'var(--text-muted)'}}>
