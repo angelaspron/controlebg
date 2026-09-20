@@ -1,7 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { GameData, ColumnMapping } from '../types';
 import * as XLSX from 'xlsx';
 import { XMLParser } from 'fast-xml-parser';
+import { 
+  batchUpdateGamesParallel, 
+  processBatchWithConcurrency, 
+  type BatchProgress 
+} from '../services/batchProcessor';
+import { fetchBGGThingWithRetry, searchBGGId } from '../services/bggService';
+import { fetchLudopediaData } from '../services/ludopediaService';
+import { fetchComparaJogosData } from '../services/comparaService';
 
 const STORAGE_KEY = 'boardgame_manager_data';
 const MAPPING_STORAGE_KEY = 'boardgame_manager_mapping';
@@ -14,7 +22,6 @@ const defaultMapping: ColumnMapping = {
   value: ''
 };
 
-// A API do BGG agora suporta CORS nativamente, não precisamos de proxy.
 function bggUrl(path: string) {
   return `https://boardgamegeek.com/xmlapi2/${path}`;
 }
@@ -24,6 +31,12 @@ export function useCollection() {
   const [columnMapping, setColumnMapping] = useState<ColumnMapping>(defaultMapping);
   const [ludoToken, setLudoToken] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
+
+  // Estados de processamento em lote
+  const [isBatchUpdating, setIsBatchUpdating] = useState(false);
+  const [batchProgress, setBatchProgress] = useState<BatchProgress | null>(null);
+  const [updatingGameIds, setUpdatingGameIds] = useState<Set<string>>(new Set());
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Carregar do Local Storage na inicialização
   useEffect(() => {
@@ -42,7 +55,7 @@ export function useCollection() {
           console.error('Erro ao fazer parse dos dados locais', e);
         }
       }
-    } catch(e) {}
+    } catch (e) {}
 
     try {
       const savedMapping = localStorage.getItem(MAPPING_STORAGE_KEY);
@@ -53,12 +66,12 @@ export function useCollection() {
           console.error('Erro ao fazer parse do mapping local', e);
         }
       }
-    } catch(e) {}
+    } catch (e) {}
 
     try {
       const savedLudo = localStorage.getItem('boardgame_manager_ludo_token');
       if (savedLudo) setLudoToken(savedLudo);
-    } catch(e) {}
+    } catch (e) {}
 
     setIsLoading(false);
   }, []);
@@ -82,6 +95,16 @@ export function useCollection() {
     }
   }, [columnMapping, ludoToken, isLoading]);
 
+  const cancelBatchUpdate = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setIsBatchUpdating(false);
+    setBatchProgress(null);
+    setUpdatingGameIds(new Set());
+  };
+
   const processExcelUpload = async (file: File) => {
     return new Promise<void>((resolve, reject) => {
       const reader = new FileReader();
@@ -93,7 +116,6 @@ export function useCollection() {
           const worksheet = workbook.Sheets[firstSheetName];
           const json = XLSX.utils.sheet_to_json(worksheet) as any[];
 
-          // Helper para buscar colunas ignorando maiúsculas/minúsculas, espaços e acentos
           const normalize = (s: string) =>
             s.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
@@ -112,11 +134,6 @@ export function useCollection() {
             return isNaN(n) ? 0 : n;
           };
 
-          // Log das colunas para debug
-          if (json.length > 0) {
-            console.log('Colunas detectadas no Excel:', Object.keys(json[0]));
-          }
-
           const parsedGames: GameData[] = json.map((row, index) => {
             const mappedName = columnMapping.name ? getVal(row, [columnMapping.name]) : undefined;
             const mappedStatus = columnMapping.status ? getVal(row, [columnMapping.status]) : undefined;
@@ -125,12 +142,27 @@ export function useCollection() {
             const mappedValue = columnMapping.value ? getVal(row, [columnMapping.value]) : undefined;
             const mappedSoldValue = columnMapping.soldValue ? getVal(row, [columnMapping.soldValue]) : undefined;
 
+            const name = mappedName || getVal(row, ['jogos', 'jogo', 'nome', 'name', 'titulo', 'título']) || 'Jogo Desconhecido';
+            const rawType = mappedType || getVal(row, ['tipo', 'categoria', 'type']) || 'Base';
+            
+            // Correção estrutural na importação inicial
+            let detectedType = rawType;
+            const lowerName = name.toLowerCase();
+            const lowerType = String(rawType).toLowerCase();
+            if (lowerType.includes('expans') || lowerType.includes('expansion') || lowerName.includes('expans') || lowerName.includes('expansion')) {
+              detectedType = 'Expansão';
+            } else if (lowerType.includes('promo') || lowerName.includes('promo')) {
+              detectedType = 'Promo';
+            } else if (lowerType.includes('acess') || lowerName.includes('acess')) {
+              detectedType = 'Acessório';
+            }
+
             return {
               id: `local-${index}-${Date.now()}`,
-              name: mappedName || getVal(row, ['jogos', 'jogo', 'nome', 'name', 'titulo', 'título']) || 'Jogo Desconhecido',
+              name,
               status: mappedStatus || getVal(row, ['status', 'estado', 'situacao', 'situação']) || 'Desconhecido',
               spend: toNumber(mappedSpend !== undefined ? mappedSpend : getVal(row, ['valor', 'grana', 'gasto', 'custo', 'valor pago', 'spend', 'preco', 'preço', 'price'])),
-              type: mappedType || getVal(row, ['tipo', 'categoria', 'type']) || 'Base',
+              type: detectedType,
               value: toNumber(mappedValue !== undefined ? mappedValue : getVal(row, ['valor mercado', 'valor de mercado', 'mercado', 'market value', 'market'])),
               soldValue: toNumber(mappedSoldValue !== undefined ? mappedSoldValue : getVal(row, ['valor vendido', 'venda', 'sold'])),
             };
@@ -138,13 +170,11 @@ export function useCollection() {
 
           setGames(prevGames => {
             const newGames = [...prevGames];
-            const toFetchBGG: GameData[] = [];
 
             for (const parsedGame of parsedGames) {
               const existingIndex = newGames.findIndex(g => g.name.toLowerCase() === parsedGame.name.toLowerCase());
               
               if (existingIndex !== -1) {
-                // Mesclar informações
                 const existing = newGames[existingIndex];
                 newGames[existingIndex] = {
                   ...existing,
@@ -154,22 +184,10 @@ export function useCollection() {
                   value: parsedGame.value ? parsedGame.value : existing.value,
                   soldValue: parsedGame.soldValue ? parsedGame.soldValue : existing.soldValue,
                 };
-                
-                // Se o jogo não tem BGG info ainda, entra na fila pra buscar
-                if (!existing.bggId) {
-                  toFetchBGG.push(newGames[existingIndex]);
-                }
               } else {
-                // Adicionar como novo
                 newGames.push(parsedGame);
-                toFetchBGG.push(parsedGame);
               }
             }
-
-            // REMOVIDO: Iniciar busca no BGG em background automaticamente
-            // if (toFetchBGG.length > 0) {
-            //   setTimeout(() => fetchBGGDataForGames(toFetchBGG), 100);
-            // }
 
             return newGames;
           });
@@ -183,609 +201,528 @@ export function useCollection() {
     });
   };
 
-  const fetchBGGDataForGames = async (gameList: GameData[]) => {
-    const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_' });
+  /**
+   * 1. Atualização Completa em Paralelo (BGG + Ludopedia + Compara Jogos simultâneos por jogo)
+   * Processada em blocos concorrentes de 5 jogos por vez.
+   */
+  const updateGamesParallel = async (gameList: GameData[]) => {
+    if (gameList.length === 0) return;
 
-    for (let i = 0; i < gameList.length; i++) {
-      const game = gameList[i];
-      // Removido: if (game.bggId) continue; para permitir atualização forçada
+    abortControllerRef.current = new AbortController();
+    setIsBatchUpdating(true);
+    setUpdatingGameIds(new Set());
 
-      try {
-        const fetchWithRetry = async (url: string) => {
-          let res = await fetch(url);
-          let retryCount = 0;
-          while ((res.status === 429 || res.status === 202) && retryCount < 5) {
-            console.log(`BGG retornou status ${res.status}. Aguardando 5 segundos...`);
-            await new Promise(r => setTimeout(r, 5000));
-            res = await fetch(url);
-            retryCount++;
-          }
-          return res;
-        };
-
-        // 1. Busca por nome - tenta exato primeiro, depois genérico
-        const trySearch = async (exact: boolean): Promise<string | null> => {
-          const url = bggUrl(
-            `search?query=${encodeURIComponent(game.name)}&type=boardgame,boardgameexpansion${exact ? '&exact=1' : ''}`
-          );
-          const res = await fetchWithRetry(url);
-          if (!res.ok) return null;
-          const text = await res.text();
-          const obj = parser.parse(text);
-          if (obj?.items?.item) {
-            const items = Array.isArray(obj.items.item) ? obj.items.item : [obj.items.item];
-            return items[0]?.['@_id'] ?? null;
-          }
-          return null;
-        };
-
-        let bggId: string | undefined | null = game.bggId;
-        if (!bggId) {
-          bggId = await trySearch(true);
-          if (!bggId) bggId = await trySearch(false);
-        }
-
-        if (bggId) {
-          // 2. Busca detalhes
-          const thingRes = await fetchWithRetry(bggUrl(`thing?id=${bggId}&stats=1`));
-          if (thingRes.ok) {
-            const thingText = await thingRes.text();
-            const thingObj = parser.parse(thingText);
-
-            if (thingObj?.items?.item) {
-              const item = Array.isArray(thingObj.items.item)
-                ? thingObj.items.item[0]
-                : thingObj.items.item;
-
-              setGames(prev => {
-                const newGames = [...prev];
-                const index = newGames.findIndex(g => g.id === game.id);
-                if (index !== -1) {
-                  const current = newGames[index];
-                  
-                  let bggRank: number | undefined = undefined;
-                  const ranksObj = item.statistics?.ratings?.ranks?.rank;
-                  if (ranksObj) {
-                    const bgRankItem = Array.isArray(ranksObj) 
-                      ? ranksObj.find((r: any) => r['@_name'] === 'boardgame') 
-                      : ranksObj;
-                    if (bgRankItem && bgRankItem['@_value'] && bgRankItem['@_value'] !== 'Not Ranked') {
-                      bggRank = parseInt(bgRankItem['@_value']);
-                    }
-                  }
-
-                  newGames[index] = {
-                    ...current,
-                    bggId: bggId || current.bggId,
-                    thumbnail: item.thumbnail || current.thumbnail || undefined,
-                    image: item.image || current.image || undefined,
-                    minPlayers: parseInt(item.minplayers?.['@_value']) || current.minPlayers || undefined,
-                    maxPlayers: parseInt(item.maxplayers?.['@_value']) || current.maxPlayers || undefined,
-                    yearPublished: parseInt(item.yearpublished?.['@_value']) || current.yearPublished || undefined,
-                    rating: parseFloat(item.statistics?.ratings?.average?.['@_value']) || current.rating || undefined,
-                    weight: parseFloat(item.statistics?.ratings?.averageweight?.['@_value']) || current.weight || undefined,
-                    rank: !isNaN(bggRank as number) ? bggRank : current.rank,
-                    domains: item.link ? item.link.filter((l: any) => l['@_type'] === 'boardgamecategory' || l['@_type'] === 'boardgamemechanic').map((l: any) => l['@_value']) : current.domains,
-                    description: item.description ? String(item.description).replace(/&#10;/g, '\n').replace(/&quot;/g, '"').replace(/&amp;/g, '&') : current.description,
-                  };
-                }
-                return newGames;
-              });
-            }
-          }
-        }
-
-        // Delay conservador para respeitar as regras estritas da BGG API e evitar bloqueios IP
-        await new Promise(r => setTimeout(r, 2500));
-      } catch (e) {
-        console.error(`Erro ao buscar "${game.name}" no BGG`, e);
+    try {
+      await batchUpdateGamesParallel(gameList, {
+        concurrencyLimit: 5,
+        ludoToken,
+        signal: abortControllerRef.current.signal,
+        onGameStart: (id) => {
+          setUpdatingGameIds(prev => new Set(prev).add(id));
+        },
+        onGameComplete: (updatedGame) => {
+          setGames(prev => prev.map(g => (g.id === updatedGame.id ? updatedGame : g)));
+          setUpdatingGameIds(prev => {
+            const next = new Set(prev);
+            next.delete(updatedGame.id);
+            return next;
+          });
+        },
+        onProgress: (progress) => {
+          setBatchProgress(progress);
+        },
+      });
+    } catch (e: any) {
+      if (e.message !== 'Operação cancelada pelo usuário') {
+        console.error('Erro na atualização paralela em lote:', e);
       }
+    } finally {
+      setIsBatchUpdating(false);
+      setBatchProgress(null);
+      setUpdatingGameIds(new Set());
+      abortControllerRef.current = null;
     }
   };
 
+  /**
+   * 2. Atualização em Lote BGG Otimizada com Concorrência (5 itens) e Backoff Exponencial
+   */
+  const fetchBGGDataForGames = async (gameList: GameData[]) => {
+    if (gameList.length === 0) return;
+
+    abortControllerRef.current = new AbortController();
+    setIsBatchUpdating(true);
+    setUpdatingGameIds(new Set());
+    const total = gameList.length;
+    let completed = 0;
+
+    try {
+      await processBatchWithConcurrency(
+        gameList,
+        5,
+        async (game) => {
+          setUpdatingGameIds(prev => new Set(prev).add(game.id));
+          setBatchProgress({
+            current: completed,
+            total,
+            percentage: Math.round((completed / total) * 100),
+            currentGameName: game.name,
+            activeApi: 'BGG (XML API2)',
+          });
+
+          let bggId = game.bggId;
+          if (!bggId) {
+            bggId = (await searchBGGId(game.name)) || undefined;
+          }
+
+          if (bggId) {
+            const bggData = await fetchBGGThingWithRetry(bggId);
+            if (bggData) {
+              setGames(prev => prev.map(g => {
+                if (g.id !== game.id) return g;
+                return {
+                  ...g,
+                  bggId,
+                  thumbnail: bggData.thumbnail || g.thumbnail,
+                  image: bggData.image || g.image,
+                  minPlayers: bggData.minPlayers || g.minPlayers,
+                  maxPlayers: bggData.maxPlayers || g.maxPlayers,
+                  yearPublished: bggData.yearPublished || g.yearPublished,
+                  rating: bggData.rating || g.rating,
+                  geekRating: bggData.geekRating || g.geekRating,
+                  weight: bggData.weight || g.weight,
+                  rank: bggData.rank || g.rank,
+                  domains: bggData.domains || g.domains,
+                  mechanics: bggData.mechanics || g.mechanics,
+                  honors: bggData.honors || g.honors,
+                  suggestedPlayers: bggData.suggestedPlayers || g.suggestedPlayers,
+                  description: bggData.description || g.description,
+                };
+              }));
+            }
+          }
+
+          completed++;
+          setUpdatingGameIds(prev => {
+            const next = new Set(prev);
+            next.delete(game.id);
+            return next;
+          });
+          setBatchProgress({
+            current: completed,
+            total,
+            percentage: Math.round((completed / total) * 100),
+            currentGameName: game.name,
+            activeApi: 'BGG (XML API2)',
+          });
+        },
+        abortControllerRef.current.signal
+      );
+    } catch (e: any) {
+      if (e.message !== 'Operação cancelada pelo usuário') {
+        console.error('Erro na atualização em lote BGG:', e);
+      }
+    } finally {
+      setIsBatchUpdating(false);
+      setBatchProgress(null);
+      setUpdatingGameIds(new Set());
+      abortControllerRef.current = null;
+    }
+  };
+
+  /**
+   * 3. Atualização em Lote Ludopedia Otimizada com Concorrência (5 itens) e Backoff Exponencial
+   */
   const fetchLudoDataForGames = async (gameList: GameData[]) => {
     if (!ludoToken) {
       alert("Token da Ludopedia não configurado. Vá em Configurações para adicionar.");
       return;
     }
+    if (gameList.length === 0) return;
 
-    for (let i = 0; i < gameList.length; i++) {
-      const game = gameList[i];
-      // Removido: if (game.ludoId) continue; para permitir atualização forçada
+    abortControllerRef.current = new AbortController();
+    setIsBatchUpdating(true);
+    setUpdatingGameIds(new Set());
+    const total = gameList.length;
+    let completed = 0;
 
-      try {
-        const fetchWithRetry = async (url: string) => {
-          let res = await fetch(url, { headers: { 'Authorization': `Bearer ${ludoToken}` } });
-          let retryCount = 0;
-          while (res.status === 429 && retryCount < 5) {
-            console.log('Ludopedia Rate Limit alcançado. Aguardando 5 segundos...');
-            await new Promise(r => setTimeout(r, 5000));
-            res = await fetch(url, { headers: { 'Authorization': `Bearer ${ludoToken}` } });
-            retryCount++;
+    try {
+      await processBatchWithConcurrency(
+        gameList,
+        5,
+        async (game) => {
+          setUpdatingGameIds(prev => new Set(prev).add(game.id));
+          setBatchProgress({
+            current: completed,
+            total,
+            percentage: Math.round((completed / total) * 100),
+            currentGameName: game.name,
+            activeApi: 'Ludopedia (v1)',
+          });
+
+          const ludoData = await fetchLudopediaData(game.name, ludoToken, game.ludoId);
+          if (ludoData) {
+            setGames(prev => prev.map(g => {
+              if (g.id !== game.id) return g;
+              return {
+                ...g,
+                ludoId: ludoData.ludoId || g.ludoId,
+                bggId: ludoData.bggId || g.bggId,
+                type: ludoData.type !== 'Base' ? ludoData.type : g.type,
+                thumbnail: ludoData.thumbnail || g.thumbnail,
+                image: ludoData.image || g.image,
+                yearPublished: ludoData.yearPublished || g.yearPublished,
+                minPlayers: ludoData.minPlayers || g.minPlayers,
+                maxPlayers: ludoData.maxPlayers || g.maxPlayers,
+                ludoRating: ludoData.ludoRating || g.ludoRating,
+                rank: ludoData.rank || g.rank,
+                domains: ludoData.domains || g.domains,
+                descriptionPt: ludoData.descriptionPt || g.descriptionPt,
+              };
+            }));
           }
-          return res;
-        };
 
-        let ludoId = game.ludoId;
-        let match: any = null;
-        if (!ludoId) {
-          const url = `/ludo-api/jogos?search=${encodeURIComponent(game.name)}`;
-          const res = await fetchWithRetry(url);
-          if (res.ok) {
-            const json = await res.json();
-            if (json.jogos && json.jogos.length > 0) {
-              match = json.jogos.find((j: any) => j.nm_jogo.toLowerCase() === game.name.toLowerCase()) || json.jogos[0];
-              ludoId = String(match.id_jogo);
-            }
-          }
-        }
-
-        if (ludoId) {
-            const detailRes = await fetchWithRetry(`/ludo-api/jogos/${ludoId}`);
-            if (detailRes.ok) {
-              const detailJson = await detailRes.json();
-              
-              setGames(prev => {
-                const newGames = [...prev];
-                const index = newGames.findIndex(g => g.id === game.id);
-                if (index !== -1) {
-                  const current = newGames[index];
-                  let inferredType = current.type;
-                  
-                  const lName = ((match && match.nm_jogo) || detailJson.nm_jogo || '').toLowerCase();
-                  const lTipo = String((match && match.tp_jogo) || detailJson.tp_jogo || (match && match.nm_tipo_jogo) || detailJson.nm_tipo_jogo || (match && match.tipo_jogo) || detailJson.tipo_jogo || '').toLowerCase();
-                  
-                  if (lTipo === 'e' || lTipo === 'expansão' || lTipo === 'expansao' || lName.includes('expans') || lName.includes('expansion')) {
-                     inferredType = 'Expansão';
-                  } else if (lTipo === 'p' || lTipo === 'promo' || lName.includes('promo')) {
-                     inferredType = 'Promo';
-                  } else if (lTipo === 'a' || lTipo === 'acessório' || lTipo === 'acessorio' || lName.includes('acess')) {
-                     inferredType = 'Acessório';
-                  } else if (lTipo === 'b' || lTipo === 'base') {
-                     inferredType = 'Base';
-                  } else if (detailJson.id_jogo_base || detailJson.jogo_base) {
-                     inferredType = 'Expansão';
-                  } else if (lTipo && lTipo !== 'null' && lTipo !== 'undefined') {
-                     inferredType = lTipo.charAt(0).toUpperCase() + lTipo.slice(1);
-                  }
-
-                  console.log(`Ludopedia JSON detalhado para ${game.name}:`, detailJson);
-                  let inferredBggId = current.bggId;
-                  
-                  // Tenta procurar em vários campos possíveis
-                  if (detailJson.link_bgg) {
-                    const bggMatch = String(detailJson.link_bgg).match(/boardgamegeek\.com\/boardgame\/(\d+)/);
-                    if (bggMatch) inferredBggId = bggMatch[1];
-                  }
-                  if (!inferredBggId && detailJson.bgg_id) {
-                    inferredBggId = String(detailJson.bgg_id);
-                  }
-                  if (!inferredBggId && detailJson.id_bgg) {
-                    inferredBggId = String(detailJson.id_bgg);
-                  }
-                  if (!inferredBggId && detailJson.links && Array.isArray(detailJson.links)) {
-                     const bggLink = detailJson.links.find((l: any) => l.url && l.url.includes('boardgamegeek.com'));
-                     if (bggLink) {
-                        const bggMatch = String(bggLink.url).match(/boardgamegeek\.com\/boardgame\/(\d+)/);
-                        if (bggMatch) inferredBggId = bggMatch[1];
-                     }
-                  }
-
-                  newGames[index] = {
-                    ...current,
-                    ludoId: ludoId || current.ludoId,
-                    bggId: inferredBggId || current.bggId,
-                    thumbnail: (match && match.thumb) || detailJson.imagem || current.thumbnail || undefined,
-                    image: detailJson.imagem || current.image || undefined,
-                    yearPublished: (match && match.ano_publicacao ? parseInt(match.ano_publicacao) : undefined) || current.yearPublished,
-                    minPlayers: (detailJson.qt_jogadores_min ? parseInt(detailJson.qt_jogadores_min) : undefined) || current.minPlayers,
-                    maxPlayers: (detailJson.qt_jogadores_max ? parseInt(detailJson.qt_jogadores_max) : undefined) || current.maxPlayers,
-                    ludoRating: (detailJson.vl_nota ? parseFloat(detailJson.vl_nota) : undefined) || current.ludoRating,
-                    rank: (detailJson.rank_jogo ? parseInt(detailJson.rank_jogo) : undefined) || (detailJson.posicao_rank ? parseInt(detailJson.posicao_rank) : undefined) || (detailJson.rank ? parseInt(detailJson.rank) : undefined) || (detailJson.rank_base ? parseInt(detailJson.rank_base) : undefined) || current.rank,
-                    type: inferredType || current.type,
-                    domains: (detailJson.categorias || detailJson.mecanicas || detailJson.temas) ? [
-                      ...(detailJson.categorias || []).map((c: any) => c.nm_categoria),
-                      ...(detailJson.mecanicas || []).map((m: any) => m.nm_mecanica),
-                      ...(detailJson.temas || []).map((t: any) => t.nm_tema)
-                    ] : current.domains,
-                    description: detailJson.ds_jogo || detailJson.descricao || detailJson.de_resumo || current.description,
-                  };
-                }
-                return newGames;
-              });
-            }
-        }
-        await new Promise(r => setTimeout(r, 2000));
-      } catch (e) {
-        console.error(`Erro ao buscar "${game.name}" na Ludopedia`, e);
+          completed++;
+          setUpdatingGameIds(prev => {
+            const next = new Set(prev);
+            next.delete(game.id);
+            return next;
+          });
+          setBatchProgress({
+            current: completed,
+            total,
+            percentage: Math.round((completed / total) * 100),
+            currentGameName: game.name,
+            activeApi: 'Ludopedia (v1)',
+          });
+        },
+        abortControllerRef.current.signal
+      );
+    } catch (e: any) {
+      if (e.message !== 'Operação cancelada pelo usuário') {
+        console.error('Erro na atualização em lote Ludopedia:', e);
       }
+    } finally {
+      setIsBatchUpdating(false);
+      setBatchProgress(null);
+      setUpdatingGameIds(new Set());
+      abortControllerRef.current = null;
     }
   };
 
+  /**
+   * 4. Atualização em Lote Compara Jogos: Restrita estritamente a Preço de Varejo e Usados
+   */
   const fetchComparaDataForGames = async (gameList: GameData[]) => {
-    for (let i = 0; i < gameList.length; i++) {
-      const game = gameList[i];
-      try {
-        const bggIdInt = game.bggId ? parseInt(game.bggId) : 0;
-        
-        const query = `
-          query GetGamePrice($nameExact: String!, $nameLike: String!, $bggId: Int!) {
-            byBggId: product(where: {bgg_id: {_eq: $bggId}}, limit: 1) {
-              id
-              name
-              bgg_id
-              bgg_rating
-              bgg_weight
-              bgg_ranking
-              min_players
-              max_players
-              playing_time
-              prices { name, price_to, available }
-            }
-            byNameExact: product(where: {name: {_ilike: $nameExact}, type: {_in: [game, expansion]}}, limit: 1) {
-              id
-              name
-              bgg_id
-              bgg_rating
-              bgg_weight
-              bgg_ranking
-              min_players
-              max_players
-              playing_time
-              prices { name, price_to, available }
-            }
-            byNameLike: product(where: {name: {_ilike: $nameLike}, type: {_in: [game, expansion]}}, limit: 1) {
-              id
-              name
-              bgg_id
-              bgg_rating
-              bgg_weight
-              bgg_ranking
-              min_players
-              max_players
-              playing_time
-              prices { name, price_to, available }
-            }
-          }
-        `;
-        
-        const variables = { 
-          nameExact: game.name,
-          nameLike: "%" + game.name + "%",
-          bggId: isNaN(bggIdInt) ? 0 : bggIdInt
-        };
-        
-        const requestOptions = {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ query, variables })
-        };
-        
-        let res = await fetch('https://api.comparajogos.com.br/v1/graphql', requestOptions);
-        let retryCount = 0;
-        
-        // Handle rate limiting (429)
-        while (res.status === 429 && retryCount < 5) {
-          console.log('Compara Jogos Rate Limit alcançado. Aguardando 5 segundos...');
-          await new Promise(r => setTimeout(r, 5000));
-          res = await fetch('https://api.comparajogos.com.br/v1/graphql', requestOptions);
-          retryCount++;
-        }
-        
-        if (res.ok) {
-          const json = await res.json();
-          if (json.data) {
-            // Priority: BGG ID -> Exact Name -> Like Name
-            let product = null;
-            if (json.data.byBggId && json.data.byBggId.length > 0) {
-              product = json.data.byBggId[0];
-            } else if (json.data.byNameExact && json.data.byNameExact.length > 0) {
-              product = json.data.byNameExact[0];
-            } else if (json.data.byNameLike && json.data.byNameLike.length > 0) {
-              product = json.data.byNameLike[0];
-            }
-            
-            if (product) {
-              // Removido 'expansão' das palavras proibidas para permitir que expansões como Wyrmspan tenham seus preços atualizados
-              const forbiddenWords = ['insert', 'dashboard', 'playmat', 'luva', 'sleeve', 'organizador', 'moeda', 'promo', 'combo', 'usado', 'kit'];
-              let minPrice: number | null = null;
-              
-              if (product.prices && product.prices.length > 0) {
-                const validPrices = product.prices
-                  .filter((p: any) => {
-                    if (p.available === false) return false;
-                    if (!p.price_to || p.price_to <= 0) return false;
-                    const nameLower = p.name ? p.name.toLowerCase() : '';
-                    return !forbiddenWords.some(word => nameLower.includes(word));
-                  })
-                  .map((p: any) => p.price_to);
-                  
-                if (validPrices.length > 0) {
-                  minPrice = Math.min(...validPrices);
-                }
+    if (gameList.length === 0) return;
+
+    abortControllerRef.current = new AbortController();
+    setIsBatchUpdating(true);
+    setUpdatingGameIds(new Set());
+    const total = gameList.length;
+    let completed = 0;
+
+    try {
+      await processBatchWithConcurrency(
+        gameList,
+        5,
+        async (game) => {
+          setUpdatingGameIds(prev => new Set(prev).add(game.id));
+          setBatchProgress({
+            current: completed,
+            total,
+            percentage: Math.round((completed / total) * 100),
+            currentGameName: game.name,
+            activeApi: 'Compara Jogos (Preços)',
+          });
+
+          const priceData = await fetchComparaJogosData(game.name, game.bggId);
+          if (priceData) {
+            setGames(prev => prev.map(g => {
+              if (g.id !== game.id) return g;
+              let marketValue = g.value;
+              if (priceData.retailPrice !== undefined && priceData.retailPrice > 0) {
+                marketValue = priceData.retailPrice;
+              } else if (priceData.usedPrice !== undefined && priceData.usedPrice > 0) {
+                marketValue = priceData.usedPrice;
               }
-              
-              setGames(prev => {
-                const newGames = [...prev];
-                const index = newGames.findIndex(g => g.id === game.id);
-                if (index !== -1) {
-                  const current = newGames[index];
-                  newGames[index] = {
-                    ...current,
-                    value: minPrice !== null ? minPrice : current.value,
-                    rating: product.bgg_rating ? parseFloat(product.bgg_rating) : current.rating,
-                    weight: product.bgg_weight ? parseFloat(product.bgg_weight) : current.weight,
-                    minPlayers: product.min_players ? parseInt(product.min_players) : current.minPlayers,
-                    maxPlayers: product.max_players ? parseInt(product.max_players) : current.maxPlayers,
-                    playtime: product.playing_time ? parseInt(product.playing_time) : current.playtime,
-                    bggId: product.bgg_id ? String(product.bgg_id) : current.bggId,
-                    rank: product.bgg_ranking ? parseInt(product.bgg_ranking) : current.rank,
-                  };
-                }
-                return newGames;
-              });
-            }
+
+              return {
+                ...g,
+                retailPrice: priceData.retailPrice || g.retailPrice,
+                usedPrice: priceData.usedPrice || g.usedPrice,
+                value: marketValue,
+              };
+            }));
           }
-        }
-        await new Promise(r => setTimeout(r, 1000));
-      } catch (e) {
-        console.error(`Erro ao buscar "${game.name}" no Compara Jogos`, e);
+
+          completed++;
+          setUpdatingGameIds(prev => {
+            const next = new Set(prev);
+            next.delete(game.id);
+            return next;
+          });
+          setBatchProgress({
+            current: completed,
+            total,
+            percentage: Math.round((completed / total) * 100),
+            currentGameName: game.name,
+            activeApi: 'Compara Jogos (Preços)',
+          });
+        },
+        abortControllerRef.current.signal
+      );
+    } catch (e: any) {
+      if (e.message !== 'Operação cancelada pelo usuário') {
+        console.error('Erro na atualização em lote Compara Jogos:', e);
       }
+    } finally {
+      setIsBatchUpdating(false);
+      setBatchProgress(null);
+      setUpdatingGameIds(new Set());
+      abortControllerRef.current = null;
     }
   };
 
   const fetchLudoCollection = async () => {
-    return new Promise<void>(async (resolve, reject) => {
-      if (!ludoToken) {
-        alert("Token da Ludopedia não configurado. Vá em Configurações para adicionar.");
-        reject(new Error("Token não configurado"));
-        return;
+    if (!ludoToken) {
+      alert("Token da Ludopedia não configurado. Vá em Configurações para adicionar.");
+      throw new Error("Token não configurado");
+    }
+    
+    try {
+      setIsLoading(true);
+      let allItems: any[] = [];
+
+      const listasParaBuscar = ['colecao', 'teve'];
+
+      for (const lista of listasParaBuscar) {
+        let currentPage = 1;
+        let hasMore = true;
+
+        while (hasMore) {
+          const url = `/ludo-api/colecao?lista=${lista}&rows=100&page=${currentPage}`;
+          
+          let res = await fetch(url, { headers: { 'Authorization': `Bearer ${ludoToken}` } });
+          let attempts = 0;
+          while (res.status === 429 && attempts < 5) {
+            await new Promise(r => setTimeout(r, 3000 * Math.pow(1.5, attempts)));
+            res = await fetch(url, { headers: { 'Authorization': `Bearer ${ludoToken}` } });
+            attempts++;
+          }
+          
+          if (!res.ok) {
+            throw new Error(`Falha ao buscar lista ${lista} na Ludopedia.`);
+          }
+
+          const json = await res.json();
+          
+          if (json.colecao) {
+            const items = Array.isArray(json.colecao) ? json.colecao : [json.colecao];
+            allItems = [...allItems, ...items];
+            if (currentPage * 100 >= json.total) {
+              hasMore = false;
+            } else {
+              currentPage++;
+              await new Promise(r => setTimeout(r, 500));
+            }
+          } else {
+            hasMore = false;
+          }
+        }
       }
       
-      try {
-        setIsLoading(true);
-        let allItems: any[] = [];
+      if (allItems.length > 0) {
+        const uniqueItemsMap = new Map();
+        for (const item of allItems) {
+          uniqueItemsMap.set(item.id_jogo, item);
+        }
+        const uniqueItems = Array.from(uniqueItemsMap.values());
 
-        const listasParaBuscar = ['colecao', 'teve'];
+        const newGames: GameData[] = uniqueItems.map((item: any, idx: number) => {
+          let inferredType = 'Base';
+          const lName = (item.nm_jogo || '').toLowerCase();
+          if (item.tp_jogo === 'e' || item.tp_jogo === 'E' || lName.includes('expans') || lName.includes('expansion')) {
+            inferredType = 'Expansão';
+          } else if (item.tp_jogo === 'p' || item.tp_jogo === 'P' || lName.includes('promo')) {
+            inferredType = 'Promo';
+          } else if (item.tp_jogo === 'a' || item.tp_jogo === 'A' || lName.includes('acess')) {
+            inferredType = 'Acessório';
+          } else if (item.nm_tipo_jogo) {
+            inferredType = item.nm_tipo_jogo;
+          } else if (item.tipo_jogo) {
+            inferredType = item.tipo_jogo;
+          }
 
-        for (const lista of listasParaBuscar) {
-          let currentPage = 1;
-          let hasMore = true;
+          return {
+            id: `ludo-${item.id_jogo}-${Date.now()}-${idx}`,
+            ludoId: String(item.id_jogo),
+            name: item.nm_jogo || 'Jogo Desconhecido',
+            status: item.fl_tem ? 'Na Coleção' : (item.fl_teve ? 'Vendido' : (item.fl_quer ? 'Desejo' : 'Na Coleção')),
+            spend: item.vl_custo ? parseFloat(item.vl_custo) : 0,
+            type: inferredType,
+            value: 0,
+            yearPublished: item.ano_publicacao ? parseInt(item.ano_publicacao, 10) : undefined,
+            thumbnail: item.thumb,
+            ludoRating: item.vl_nota ? parseFloat(item.vl_nota) : undefined,
+          };
+        });
 
-          while (hasMore) {
-            const url = `/ludo-api/colecao?lista=${lista}&rows=100&page=${currentPage}`;
+        setGames(prev => {
+          const newPrev = [...prev];
+          
+          for (const ng of newGames) {
+            const existingIndex = newPrev.findIndex(g => g.name.toLowerCase() === ng.name.toLowerCase() || g.ludoId === ng.ludoId);
             
-            let res = await fetch(url, { headers: { 'Authorization': `Bearer ${ludoToken}` } });
-            let attempts = 0;
-            while (res.status === 429 && attempts < 5) {
-              await new Promise(r => setTimeout(r, 5000));
-              res = await fetch(url, { headers: { 'Authorization': `Bearer ${ludoToken}` } });
-              attempts++;
-            }
-            
-            if (!res.ok) {
-              throw new Error(`Falha ao buscar lista ${lista} na Ludopedia.`);
-            }
-
-            const json = await res.json();
-            
-            if (json.colecao) {
-              const items = Array.isArray(json.colecao) ? json.colecao : [json.colecao];
-              allItems = [...allItems, ...items];
-              if (currentPage * 100 >= json.total) {
-                hasMore = false;
-              } else {
-                currentPage++;
-                await new Promise(r => setTimeout(r, 1000));
-              }
+            if (existingIndex !== -1) {
+              newPrev[existingIndex] = {
+                ...newPrev[existingIndex],
+                ludoId: newPrev[existingIndex].ludoId || ng.ludoId,
+                thumbnail: newPrev[existingIndex].thumbnail || ng.thumbnail,
+                ludoRating: newPrev[existingIndex].ludoRating || ng.ludoRating,
+                status: newPrev[existingIndex].status === 'Desconhecido' ? ng.status : newPrev[existingIndex].status,
+                spend: newPrev[existingIndex].spend === 0 ? ng.spend : newPrev[existingIndex].spend,
+                yearPublished: newPrev[existingIndex].yearPublished || ng.yearPublished,
+                type: ng.type || newPrev[existingIndex].type,
+              };
             } else {
-              hasMore = false;
+              newPrev.push(ng);
             }
           }
-        }
-        
-        if (allItems.length > 0) {
-          // Deduplicar itens vindos da API (caso a paginação da Ludopedia repita itens)
-          const uniqueItemsMap = new Map();
-          for (const item of allItems) {
-            uniqueItemsMap.set(item.id_jogo, item);
-          }
-          const uniqueItems = Array.from(uniqueItemsMap.values());
-
-          const newGames: GameData[] = uniqueItems.map((item: any, idx: number) => {
-            let inferredType = 'Base';
-            const lName = (item.nm_jogo || '').toLowerCase();
-            if (item.tp_jogo === 'e' || item.tp_jogo === 'E' || lName.includes('expans') || lName.includes('expansion')) {
-              inferredType = 'Expansão';
-            } else if (item.tp_jogo === 'p' || item.tp_jogo === 'P' || lName.includes('promo')) {
-              inferredType = 'Promo';
-            } else if (item.tp_jogo === 'a' || item.tp_jogo === 'A' || lName.includes('acess')) {
-              inferredType = 'Acessório';
-            } else if (item.nm_tipo_jogo) {
-              inferredType = item.nm_tipo_jogo;
-            } else if (item.tipo_jogo) {
-              inferredType = item.tipo_jogo;
-            }
-
-            return {
-              id: `ludo-${item.id_jogo}-${Date.now()}-${idx}`,
-              ludoId: String(item.id_jogo),
-              name: item.nm_jogo || 'Jogo Desconhecido',
-              status: item.fl_tem ? 'Na Coleção' : (item.fl_teve ? 'Vendido' : (item.fl_quer ? 'Desejo' : 'Na Coleção')),
-              spend: item.vl_custo ? parseFloat(item.vl_custo) : 0,
-              type: inferredType,
-              value: 0,
-              yearPublished: item.ano_publicacao ? parseInt(item.ano_publicacao) : undefined,
-              thumbnail: item.thumb,
-              ludoRating: item.vl_nota ? parseFloat(item.vl_nota) : undefined,
-            };
-          });
-
-          setGames(prev => {
-            const newPrev = [...prev];
-            
-            for (const ng of newGames) {
-              const existingIndex = newPrev.findIndex(g => g.name.toLowerCase() === ng.name.toLowerCase() || g.ludoId === ng.ludoId);
-              
-              if (existingIndex !== -1) {
-                newPrev[existingIndex] = {
-                  ...newPrev[existingIndex],
-                  ludoId: newPrev[existingIndex].ludoId || ng.ludoId,
-                  thumbnail: newPrev[existingIndex].thumbnail || ng.thumbnail,
-                  ludoRating: newPrev[existingIndex].ludoRating || ng.ludoRating,
-                  status: newPrev[existingIndex].status === 'Desconhecido' ? ng.status : newPrev[existingIndex].status,
-                  spend: newPrev[existingIndex].spend === 0 ? ng.spend : newPrev[existingIndex].spend,
-                  yearPublished: newPrev[existingIndex].yearPublished || ng.yearPublished,
-                  type: ng.type || newPrev[existingIndex].type,
-                };
-              } else {
-                newPrev.push(ng);
-              }
-            }
-            
-            return newPrev;
-          });
-        }
-        resolve();
-      } catch (error) {
-        console.error('Erro no Ludopedia Collection:', error);
-        reject(error);
-      } finally {
-        setIsLoading(false);
+          
+          return newPrev;
+        });
       }
-    });
+    } catch (error) {
+      console.error('Erro no Ludopedia Collection:', error);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const fetchBGGCollection = async (username: string) => {
-    return new Promise<void>(async (resolve, reject) => {
-      try {
-        setIsLoading(true);
-        const url = bggUrl(`collection?username=${encodeURIComponent(username)}&stats=1`);
-        const fetchOpts = { headers: { 'Authorization': 'Bearer cdbac8cf-91ac-4af7-9d1f-266544061d52' } };
-        
-        let res = await fetch(url, fetchOpts);
-        
-        // Se a API do BGG estiver enfileirando (202), precisamos tentar novamente.
-        let attempts = 0;
-        while (res.status === 202 && attempts < 5) {
-          await new Promise(r => setTimeout(r, 2000));
-          res = await fetch(url, fetchOpts);
-          attempts++;
-        }
-        
-        if (!res.ok) {
-          throw new Error('Falha ao buscar coleção. Verifique o usuário.');
-        }
-
-        const text = await res.text();
-        const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_' });
-        const obj = parser.parse(text);
-
-        if (obj?.errors?.error) {
-          throw new Error(obj.errors.error?.message || 'Erro do BGG');
-        }
-
-        if (obj?.items?.item) {
-          const items = Array.isArray(obj.items.item) ? obj.items.item : [obj.items.item];
-          
-          const newGames: GameData[] = items.map((item: any, idx: number) => {
-            const statusNode = item.status || {};
-            let mappedStatus = 'Na Coleção'; // Default
-            if (statusNode['@_own'] === '1') mappedStatus = 'Na Coleção';
-            else if (statusNode['@_prevowned'] === '1') mappedStatus = 'Vendido';
-            else if (statusNode['@_wishlist'] === '1') mappedStatus = 'Desejo';
-            
-            let name = 'Jogo Desconhecido';
-            if (item.name) {
-              name = typeof item.name === 'string' ? item.name : (item.name['#text'] || item.name['@_value'] || 'Jogo Desconhecido');
-            }
-
-            let bggType = 'Base';
-            const bggName = name.toLowerCase();
-            if (item['@_subtype'] === 'boardgameexpansion' || bggName.includes('expans') || bggName.includes('expansion')) {
-              bggType = 'Expansão';
-            } else if (bggName.includes('promo')) {
-              bggType = 'Promo';
-            } else if (item['@_subtype'] === 'boardgameaccessory' || bggName.includes('acess')) {
-              bggType = 'Acessório';
-            }
-
-            let bggRank: number | undefined = undefined;
-            const ranksObj = item.stats?.rating?.ranks?.rank;
-            if (ranksObj) {
-              const bgRankItem = Array.isArray(ranksObj) 
-                ? ranksObj.find((r: any) => r['@_name'] === 'boardgame') 
-                : ranksObj;
-              if (bgRankItem && bgRankItem['@_value'] && bgRankItem['@_value'] !== 'Not Ranked') {
-                bggRank = parseInt(bgRankItem['@_value']);
-              }
-            }
-
-            return {
-              id: `bgg-${item['@_objectid']}-${Date.now()}-${idx}`,
-              bggId: item['@_objectid'],
-              name: name,
-              status: mappedStatus,
-              spend: 0,
-              type: bggType,
-              value: 0,
-              thumbnail: item.thumbnail,
-              image: item.image,
-              yearPublished: item.yearpublished ? parseInt(item.yearpublished) : undefined,
-              minPlayers: item.stats?.['@_minplayers'] ? parseInt(item.stats['@_minplayers']) : undefined,
-              maxPlayers: item.stats?.['@_maxplayers'] ? parseInt(item.stats['@_maxplayers']) : undefined,
-              rating: item.stats?.rating?.average?.['@_value'] ? parseFloat(item.stats.rating.average['@_value']) : undefined,
-              rank: !isNaN(bggRank as number) ? bggRank : undefined
-            };
-          });
-
-          setGames(prev => {
-            const newPrev = [...prev];
-            const existingBggIds = new Set();
-            const existingNames = new Set();
-
-            newPrev.forEach(g => {
-              if (g.bggId) existingBggIds.add(g.bggId);
-              existingNames.add(g.name.toLowerCase());
-            });
-            
-            const toAdd: GameData[] = [];
-
-            for (const ng of newGames) {
-              const existingIndex = newPrev.findIndex(g => (g.bggId && g.bggId === ng.bggId) || g.name.toLowerCase() === ng.name.toLowerCase());
-              
-              if (existingIndex !== -1) {
-                newPrev[existingIndex] = {
-                  ...newPrev[existingIndex],
-                  bggId: newPrev[existingIndex].bggId || ng.bggId,
-                  thumbnail: newPrev[existingIndex].thumbnail || ng.thumbnail,
-                  image: newPrev[existingIndex].image || ng.image,
-                  status: newPrev[existingIndex].status === 'Desconhecido' ? ng.status : newPrev[existingIndex].status,
-                  yearPublished: newPrev[existingIndex].yearPublished || ng.yearPublished,
-                  minPlayers: newPrev[existingIndex].minPlayers || ng.minPlayers,
-                  maxPlayers: newPrev[existingIndex].maxPlayers || ng.maxPlayers,
-                  rating: newPrev[existingIndex].rating || ng.rating,
-                  rank: newPrev[existingIndex].rank || ng.rank,
-                  type: (newPrev[existingIndex].type === 'Base' || newPrev[existingIndex].type === 'Desconhecido') && ng.type !== 'Base' ? ng.type : newPrev[existingIndex].type,
-                };
-              } else {
-                toAdd.push(ng);
-              }
-            }
-            
-            return [...newPrev, ...toAdd];
-          });
-        }
-        resolve();
-      } catch (error) {
-        console.error('Erro no BGG Collection:', error);
-        reject(error);
-      } finally {
-        setIsLoading(false);
+    try {
+      setIsLoading(true);
+      const url = bggUrl(`collection?username=${encodeURIComponent(username)}&stats=1`);
+      const fetchOpts = { headers: { 'Authorization': 'Bearer cdbac8cf-91ac-4af7-9d1f-266544061d52' } };
+      
+      let res = await fetch(url, fetchOpts);
+      
+      let attempts = 0;
+      while (res.status === 202 && attempts < 5) {
+        await new Promise(r => setTimeout(r, 2000));
+        res = await fetch(url, fetchOpts);
+        attempts++;
       }
-    });
+      
+      if (!res.ok) {
+        throw new Error('Falha ao buscar coleção. Verifique o usuário.');
+      }
+
+      const text = await res.text();
+      const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_' });
+      const obj = parser.parse(text);
+
+      if (obj?.errors?.error) {
+        throw new Error(obj.errors.error?.message || 'Erro do BGG');
+      }
+
+      if (obj?.items?.item) {
+        const items = Array.isArray(obj.items.item) ? obj.items.item : [obj.items.item];
+        
+        const newGames: GameData[] = items.map((item: any, idx: number) => {
+          const statusNode = item.status || {};
+          let mappedStatus = 'Na Coleção';
+          if (statusNode['@_own'] === '1') mappedStatus = 'Na Coleção';
+          else if (statusNode['@_prevowned'] === '1') mappedStatus = 'Vendido';
+          else if (statusNode['@_wishlist'] === '1') mappedStatus = 'Desejo';
+          
+          let name = 'Jogo Desconhecido';
+          if (item.name) {
+            name = typeof item.name === 'string' ? item.name : (item.name['#text'] || item.name['@_value'] || 'Jogo Desconhecido');
+          }
+
+          let bggType = 'Base';
+          const bggName = name.toLowerCase();
+          if (item['@_subtype'] === 'boardgameexpansion' || bggName.includes('expans') || bggName.includes('expansion')) {
+            bggType = 'Expansão';
+          } else if (bggName.includes('promo')) {
+            bggType = 'Promo';
+          } else if (item['@_subtype'] === 'boardgameaccessory' || bggName.includes('acess')) {
+            bggType = 'Acessório';
+          }
+
+          let bggRank: number | undefined = undefined;
+          const ranksObj = item.stats?.rating?.ranks?.rank;
+          if (ranksObj) {
+            const bgRankItem = Array.isArray(ranksObj) 
+              ? ranksObj.find((r: any) => r['@_name'] === 'boardgame') 
+              : ranksObj;
+            if (bgRankItem && bgRankItem['@_value'] && bgRankItem['@_value'] !== 'Not Ranked') {
+              bggRank = parseInt(bgRankItem['@_value'], 10);
+            }
+          }
+
+          const bayesRating = item.stats?.rating?.bayesaverage?.['@_value']
+            ? parseFloat(item.stats.rating.bayesaverage['@_value'])
+            : undefined;
+
+          return {
+            id: `bgg-${item['@_objectid']}-${Date.now()}-${idx}`,
+            bggId: item['@_objectid'],
+            name,
+            status: mappedStatus,
+            spend: 0,
+            type: bggType,
+            value: 0,
+            thumbnail: item.thumbnail,
+            image: item.image,
+            yearPublished: item.yearpublished ? parseInt(item.yearpublished, 10) : undefined,
+            minPlayers: item.stats?.['@_minplayers'] ? parseInt(item.stats['@_minplayers'], 10) : undefined,
+            maxPlayers: item.stats?.['@_maxplayers'] ? parseInt(item.stats['@_maxplayers'], 10) : undefined,
+            rating: item.stats?.rating?.average?.['@_value'] ? parseFloat(item.stats.rating.average['@_value']) : undefined,
+            geekRating: bayesRating,
+            rank: !isNaN(bggRank as number) ? bggRank : undefined
+          };
+        });
+
+        setGames(prev => {
+          const newPrev = [...prev];
+          const toAdd: GameData[] = [];
+
+          for (const ng of newGames) {
+            const existingIndex = newPrev.findIndex(g => (g.bggId && g.bggId === ng.bggId) || g.name.toLowerCase() === ng.name.toLowerCase());
+            
+            if (existingIndex !== -1) {
+              newPrev[existingIndex] = {
+                ...newPrev[existingIndex],
+                bggId: newPrev[existingIndex].bggId || ng.bggId,
+                thumbnail: newPrev[existingIndex].thumbnail || ng.thumbnail,
+                image: newPrev[existingIndex].image || ng.image,
+                status: newPrev[existingIndex].status === 'Desconhecido' ? ng.status : newPrev[existingIndex].status,
+                yearPublished: newPrev[existingIndex].yearPublished || ng.yearPublished,
+                minPlayers: newPrev[existingIndex].minPlayers || ng.minPlayers,
+                maxPlayers: newPrev[existingIndex].maxPlayers || ng.maxPlayers,
+                rating: newPrev[existingIndex].rating || ng.rating,
+                geekRating: newPrev[existingIndex].geekRating || ng.geekRating,
+                rank: newPrev[existingIndex].rank || ng.rank,
+                type: (newPrev[existingIndex].type === 'Base' || newPrev[existingIndex].type === 'Desconhecido') && ng.type !== 'Base' ? ng.type : newPrev[existingIndex].type,
+              };
+            } else {
+              toAdd.push(ng);
+            }
+          }
+          
+          return [...newPrev, ...toAdd];
+        });
+      }
+    } catch (error) {
+      console.error('Erro no BGG Collection:', error);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const addGame = (game: Omit<GameData, 'id'>) => {
@@ -794,7 +731,6 @@ export function useCollection() {
       id: `manual-${Date.now()}`
     };
     setGames(prev => [...prev, newGame]);
-    // fetchBGGDataForGames([newGame]); // Removido
   };
 
   const editGame = (id: string, updates: Partial<Omit<GameData, 'id'>>) => {
@@ -824,10 +760,13 @@ export function useCollection() {
       'Valor Mercado': g.value,
       'Ano de Publicação': g.yearPublished || '',
       'Nota BGG': g.rating ? g.rating.toFixed(1) : '',
+      'Geek Rating': g.geekRating ? g.geekRating.toFixed(2) : '',
       'BGG ID': g.bggId || '',
       'Min Jogadores': g.minPlayers || '',
       'Max Jogadores': g.maxPlayers || '',
       'Tempo de Partida': g.playtime || '',
+      'Jogadores Ideais': g.suggestedPlayers?.summary || '',
+      'Prêmios': (g.honors || []).join('; '),
     })));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Coleção");
@@ -837,9 +776,7 @@ export function useCollection() {
   const exportToJson = () => {
     const dataStr = JSON.stringify(games, null, 2);
     const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
-    
     const exportFileDefaultName = 'Minha_Colecao_BGG.json';
-    
     const linkElement = document.createElement('a');
     linkElement.setAttribute('href', dataUri);
     linkElement.setAttribute('download', exportFileDefaultName);
@@ -874,8 +811,19 @@ export function useCollection() {
     isLoading,
     ludoToken,
     setLudoToken,
+    // Lote e Progresso
+    isBatchUpdating,
+    batchProgress,
+    updatingGameIds,
+    cancelBatchUpdate,
+    updateGamesParallel,
+    fetchBGGDataForGames,
+    fetchLudoDataForGames,
+    fetchComparaDataForGames,
+    // Coleções e CRUD
     processExcelUpload,
     fetchBGGCollection,
+    fetchLudoCollection,
     clearCollection,
     exportToExcel,
     exportToJson,
@@ -883,9 +831,5 @@ export function useCollection() {
     addGame,
     editGame,
     deleteGame,
-    fetchBGGDataForGames,
-    fetchLudoDataForGames,
-    fetchComparaDataForGames,
-    fetchLudoCollection,
   };
 }

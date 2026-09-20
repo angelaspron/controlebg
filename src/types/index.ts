@@ -8,20 +8,31 @@ export interface GameData {
   value: number | string; // 'valor mercado' - valor atual de mercado
   soldValue?: number | string; // valor de venda
   
-  // Dados extras do BGG
+  // Dados extras do BGG & Ludopedia & Compara Jogos
   thumbnail?: string;
   image?: string;
   minPlayers?: number;
   maxPlayers?: number;
-  rating?: number;
+  rating?: number; // Nota Média BGG (average)
+  geekRating?: number; // BGG Geek Rating (bayesaverage)
   yearPublished?: number;
   ludoId?: string;
   ludoRating?: number;
-  weight?: number; // 1-5
+  weight?: number; // 1-5 (complexidade)
   playtime?: number; // tempo de partida
   domains?: string[]; // categories/mechanics
+  mechanics?: string[]; // mecânicas BGG
+  honors?: string[]; // prêmios do jogo (boardgamehonor)
+  suggestedPlayers?: {
+    best?: string[];
+    recommended?: string[];
+    summary?: string;
+  }; // quantidade ideal de jogadores (poll suggested_numplayers)
   rank?: number; // posição no ranking (bgg_rank)
-  description?: string; // resumo/descrição do jogo
+  description?: string; // resumo/descrição do jogo (BGG)
+  descriptionPt?: string; // sinopse/descrição em português (Ludopedia)
+  retailPrice?: number; // menor preço de varejo (Compara Jogos)
+  usedPrice?: number; // estimativa de mercado de usados (Compara Jogos)
 }
 
 export interface ColumnMapping {
@@ -32,3 +43,4 @@ export interface ColumnMapping {
   value: string;
   soldValue?: string;
 }
+
