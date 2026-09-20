@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Users, Star, Brain, Trophy, Calendar, ExternalLink, Pencil, Tag, Clock } from 'lucide-react';
+import { X, Users, Star, Brain, Trophy, Calendar, ExternalLink, Pencil, Tag, Clock, Award, ShieldCheck } from 'lucide-react';
 import type { GameData } from '../types';
 import '../components.css';
 
@@ -27,8 +27,8 @@ export function GameDetailsModal({ game, isOpen, onClose, onEdit }: GameDetailsM
   };
 
   const panelStyle: React.CSSProperties = {
-    width: '100%', maxWidth: '720px', padding: '0', position: 'relative',
-    maxHeight: '90vh', overflowY: 'auto', overflowX: 'hidden',
+    width: '100%', maxWidth: '750px', padding: '0', position: 'relative',
+    maxHeight: '92vh', overflowY: 'auto', overflowX: 'hidden',
     borderRadius: '16px', background: 'var(--bg-card)', border: '1px solid var(--glass-border)'
   };
 
@@ -38,7 +38,10 @@ export function GameDetailsModal({ game, isOpen, onClose, onEdit }: GameDetailsM
     return doc.body.textContent || "";
   };
 
-  const descriptionText = cleanDescription(game.description);
+  // Preferir descrição em português (Ludopedia), caso disponível
+  const descriptionPtText = cleanDescription(game.descriptionPt);
+  const descriptionEnText = cleanDescription(game.description);
+  const mainDescription = descriptionPtText || descriptionEnText;
 
   return (
     <div className="modal-overlay" style={overlayStyle} onClick={onClose}>
@@ -49,7 +52,9 @@ export function GameDetailsModal({ game, isOpen, onClose, onEdit }: GameDetailsM
           {(game.image || game.thumbnail) ? (
             <img 
               src={game.image || game.thumbnail} 
-              alt={game.name} 
+              alt={game.name}
+              loading="lazy"
+              decoding="async"
               style={{ width: '100%', height: '100%', objectFit: 'contain', backdropFilter: 'blur(10px)', padding: '1rem' }} 
             />
           ) : (
@@ -58,6 +63,7 @@ export function GameDetailsModal({ game, isOpen, onClose, onEdit }: GameDetailsM
           
           <button
             onClick={onClose}
+            aria-label="Fechar"
             style={{ 
               position: 'absolute', top: '1rem', right: '1rem', 
               background: 'rgba(0,0,0,0.6)', border: '1px solid rgba(255,255,255,0.2)', 
@@ -105,8 +111,9 @@ export function GameDetailsModal({ game, isOpen, onClose, onEdit }: GameDetailsM
           </div>
 
           {/* Key Stats Cards */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.75rem', marginBottom: '1.5rem' }}>
-            {(game.minPlayers || game.maxPlayers) && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(135px, 1fr))', gap: '0.75rem', marginBottom: '1.5rem' }}>
+            {/* Jogadores Suportados + Votação Ideal Comunitária */}
+            {(game.minPlayers || game.maxPlayers || game.suggestedPlayers) && (
               <div style={{ background: 'rgba(255,255,255,0.04)', padding: '0.75rem 1rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.07)' }}>
                 <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem', marginBottom: '0.25rem' }}>
                   <Users size={13} color="#6366f1" /> Jogadores
@@ -114,6 +121,11 @@ export function GameDetailsModal({ game, isOpen, onClose, onEdit }: GameDetailsM
                 <div style={{ fontWeight: 600, fontSize: '1rem', color: '#fff' }}>
                   {game.minPlayers === game.maxPlayers ? game.minPlayers : `${game.minPlayers || '?'} - ${game.maxPlayers || '?'}`}
                 </div>
+                {game.suggestedPlayers?.summary && (
+                  <div style={{ fontSize: '0.72rem', color: '#a5b4fc', marginTop: '4px', fontWeight: 500 }}>
+                    ★ {game.suggestedPlayers.summary}
+                  </div>
+                )}
               </div>
             )}
 
@@ -147,6 +159,11 @@ export function GameDetailsModal({ game, isOpen, onClose, onEdit }: GameDetailsM
                 <div style={{ fontWeight: 600, fontSize: '1rem', color: '#fff' }}>
                   {game.rating.toFixed(1)} / 10
                 </div>
+                {game.geekRating !== undefined && game.geekRating > 0 && (
+                  <div style={{ fontSize: '0.72rem', color: '#f59e0b', marginTop: '4px' }}>
+                    Geek: {game.geekRating.toFixed(2)}
+                  </div>
+                )}
               </div>
             )}
 
@@ -173,34 +190,71 @@ export function GameDetailsModal({ game, isOpen, onClose, onEdit }: GameDetailsM
             )}
           </div>
 
+          {/* Prêmios e Distinções (boardgamehonor) */}
+          {game.honors && game.honors.length > 0 && (
+            <div style={{ marginBottom: '1.5rem' }}>
+              <h3 style={{ fontSize: '0.95rem', color: 'var(--text-muted)', marginBottom: '0.5rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <Award size={15} color="#fbbf24" /> Prêmios & Distinções ({game.honors.length})
+              </h3>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', maxHeight: '120px', overflowY: 'auto', padding: '4px 0' }}>
+                {game.honors.map((honor, idx) => (
+                  <span
+                    key={idx}
+                    style={{
+                      background: 'rgba(245, 158, 11, 0.12)',
+                      color: '#fcd34d',
+                      border: '1px solid rgba(245, 158, 11, 0.3)',
+                      padding: '3px 10px',
+                      borderRadius: '16px',
+                      fontSize: '0.78rem',
+                      fontWeight: 500,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                  >
+                    🏆 {honor}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Resumo / Descrição */}
           <div style={{ marginBottom: '1.5rem' }}>
-            <h3 style={{ fontSize: '1rem', color: 'var(--text-muted)', marginBottom: '0.5rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              Resumo do Jogo
-            </h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+              <h3 style={{ fontSize: '0.95rem', color: 'var(--text-muted)', margin: 0, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                Resumo do Jogo
+              </h3>
+              {game.descriptionPt && (
+                <span style={{ fontSize: '0.75rem', color: '#10b981', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                  <ShieldCheck size={12} /> Sinopse em Português
+                </span>
+              )}
+            </div>
             <div style={{ 
               background: 'rgba(0,0,0,0.2)', padding: '1rem 1.25rem', borderRadius: '12px', 
               fontSize: '0.92rem', lineHeight: '1.6', color: '#e2e8f0', 
-              maxHeight: '180px', overflowY: 'auto', border: '1px solid rgba(255,255,255,0.05)'
+              maxHeight: '200px', overflowY: 'auto', border: '1px solid rgba(255,255,255,0.05)'
             }}>
-              {descriptionText ? (
-                descriptionText
+              {mainDescription ? (
+                mainDescription
               ) : (
                 <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                  Nenhum resumo disponível no momento. Clique em "Editar" para atualizar os dados via BGG ou Ludopedia.
+                  Nenhum resumo disponível no momento. Clique em "Atualizar via API" para carregar dados do BGG e Ludopedia.
                 </span>
               )}
             </div>
           </div>
 
           {/* Categorias / Mecânicas */}
-          {game.domains && game.domains.length > 0 && (
+          {((game.domains && game.domains.length > 0) || (game.mechanics && game.mechanics.length > 0)) && (
             <div style={{ marginBottom: '1.5rem' }}>
-              <h3 style={{ fontSize: '1rem', color: 'var(--text-muted)', marginBottom: '0.5rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <h3 style={{ fontSize: '0.95rem', color: 'var(--text-muted)', marginBottom: '0.5rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                 <Tag size={14} /> Categorias e Mecânicas
               </h3>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
-                {game.domains.map((domain, idx) => (
+                {Array.from(new Set([...(game.mechanics || []), ...(game.domains || [])])).map((domain, idx) => (
                   <span 
                     key={idx}
                     style={{ 
@@ -221,7 +275,7 @@ export function GameDetailsModal({ game, isOpen, onClose, onEdit }: GameDetailsM
             display: 'flex', justifyContent: 'space-between', alignItems: 'center', 
             paddingTop: '1rem', borderTop: '1px solid var(--glass-border)', flexWrap: 'wrap', gap: '1rem' 
           }}>
-            <div style={{ display: 'flex', gap: '1.5rem' }}>
+            <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
               <div>
                 <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem', display: 'block' }}>Valor Pago:</span>
                 <strong style={{ fontSize: '1.1rem', color: isGiftOrZero ? '#34d399' : '#fff' }}>
@@ -234,6 +288,22 @@ export function GameDetailsModal({ game, isOpen, onClose, onEdit }: GameDetailsM
                   {Number(game.value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                 </strong>
               </div>
+              {game.retailPrice !== undefined && game.retailPrice > 0 && (
+                <div>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem', display: 'block' }}>Menor Varejo:</span>
+                  <strong style={{ fontSize: '1.05rem', color: '#38bdf8' }}>
+                    {Number(game.retailPrice).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                  </strong>
+                </div>
+              )}
+              {game.usedPrice !== undefined && game.usedPrice > 0 && (
+                <div>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem', display: 'block' }}>Mercado Usados:</span>
+                  <strong style={{ fontSize: '1.05rem', color: '#fb923c' }}>
+                    {Number(game.usedPrice).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                  </strong>
+                </div>
+              )}
               {String(game.status).toLowerCase().includes('vendido') && game.soldValue && (
                 <div>
                   <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem', display: 'block' }}>Vendido Por:</span>
