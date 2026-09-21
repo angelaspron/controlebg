@@ -8,6 +8,8 @@ const xmlParser = new XMLParser({
 export interface BGGParsedData {
   bggId: string;
   name?: string;
+  type?: string;
+  isExpansion?: boolean;
   thumbnail?: string;
   image?: string;
   minPlayers?: number;
@@ -62,6 +64,14 @@ export function parseBGGThingXml(xmlText: string): BGGParsedData | null {
       }
     }
 
+    let isExpansion = false;
+    let bggType = 'Base';
+
+    if (item['@_type'] === 'boardgameexpansion') {
+      isExpansion = true;
+      bggType = 'Expansão';
+    }
+
     // Links: mecânicas, categorias, honors (prêmios)
     const links = Array.isArray(item.link) ? item.link : item.link ? [item.link] : [];
     
@@ -72,6 +82,12 @@ export function parseBGGThingXml(xmlText: string): BGGParsedData | null {
     for (const link of links) {
       const type = link['@_type'];
       const value = link['@_value'];
+      
+      if (type === 'boardgameexpansion') {
+        isExpansion = true;
+        bggType = 'Expansão';
+      }
+
       if (!value) continue;
 
       if (type === 'boardgamemechanic') {
@@ -170,6 +186,8 @@ export function parseBGGThingXml(xmlText: string): BGGParsedData | null {
     return {
       bggId,
       name: primaryName,
+      type: bggType,
+      isExpansion,
       thumbnail: item.thumbnail,
       image: item.image,
       minPlayers: isNaN(minPlayers as number) ? undefined : minPlayers,

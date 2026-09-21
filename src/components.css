@@ -144,16 +144,18 @@
 
 /* Painel de Resumo Financeiro */
 .financial-summary-grid {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  display: flex;
+  flex-wrap: nowrap;
   gap: 1.25rem;
   width: 100%;
   position: relative;
   padding-top: 2.5rem;
   margin-bottom: 2rem;
+  overflow-x: auto;
 }
 
 .financial-summary-grid .stat-box {
+  flex: 1 1 0;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -162,21 +164,26 @@
 
 @media (max-width: 1100px) {
   .financial-summary-grid {
-    grid-template-columns: repeat(3, 1fr);
+    flex-wrap: wrap;
+  }
+  .financial-summary-grid .stat-box {
+    flex: 1 1 calc(33.333% - 1.25rem);
   }
 }
 
 @media (max-width: 768px) {
   .financial-summary-grid {
-    grid-template-columns: repeat(2, 1fr);
     gap: 1rem;
     padding-top: 3rem;
+  }
+  .financial-summary-grid .stat-box {
+    flex: 1 1 calc(50% - 1rem);
   }
 }
 
 @media (max-width: 480px) {
-  .financial-summary-grid {
-    grid-template-columns: 1fr;
+  .financial-summary-grid .stat-box {
+    flex: 1 1 100%;
   }
 }
 
@@ -184,7 +191,7 @@
 .games-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 1.5rem;
+  gap: 20px;
   width: 100%;
 }
 

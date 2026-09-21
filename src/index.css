@@ -39,12 +39,21 @@ body {
 }
 
 .app-container {
-  max-width: 1200px;
+  width: 100%;
+  max-width: 100%;
   margin: 0 auto;
-  padding: 2rem;
+  padding: 1.5rem 2rem;
   display: flex;
   flex-direction: column;
   gap: 2rem;
+  box-sizing: border-box;
+}
+
+@media (max-width: 768px) {
+  .app-container {
+    padding: 1rem;
+    gap: 1.5rem;
+  }
 }
 
 .glass-panel {

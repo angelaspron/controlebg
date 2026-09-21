@@ -44,13 +44,52 @@ export async function updateSingleGameParallel(
   const ludoData: LudopediaParsedData | null = ludoResult.status === 'fulfilled' ? ludoResult.value : null;
   const comparaData: ComparaPriceData | null = comparaResult.status === 'fulfilled' ? comparaResult.value : null;
 
-  // Determinação precisa de Tipo (Base vs Expansão) com base estrutural da Ludopedia e BGG
-  let inferredType = game.type || 'Base';
-  if (ludoData?.isExpansion || (ludoData?.type && ludoData.type !== 'Base')) {
-    inferredType = ludoData.type;
-  } else if (game.name.toLowerCase().includes('expans') || game.name.toLowerCase().includes('expansion')) {
-    inferredType = 'Expansão';
+  // 2. Heurística de Blindagem no Merge (OR Lógico)
+  // O tipo "Base" só é mantido se TODAS as APIs confirmarem.
+  let finalType = 'Base';
+  
+  const bggType = bggData?.type || 'Base';
+  const ludoType = ludoData?.type || 'Base';
+  const gameType = game.type || 'Base';
+
+  const isBggNonBase = bggType !== 'Base';
+  const isLudoNonBase = ludoType !== 'Base';
+  const isGameNonBase = gameType !== 'Base' && gameType !== 'Desconhecido';
+
+  if (bggData?.isExpansion || ludoData?.isExpansion || bggType === 'Expansão' || ludoType === 'Expansão') {
+    finalType = 'Expansão';
+  } else if (bggType === 'Promo' || ludoType === 'Promo') {
+    finalType = 'Promo';
+  } else if (bggType === 'Acessório' || ludoType === 'Acessório') {
+    finalType = 'Acessório';
+  } else if (isBggNonBase) {
+    finalType = bggType;
+  } else if (isLudoNonBase) {
+    finalType = ludoType;
+  } else if (isGameNonBase) {
+    finalType = gameType;
   }
+
+  // 3. Fallback por Substring no Merge Final
+  const normalize = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+  const nomeFinal = normalize(ludoData?.namePt || bggData?.name || game.name);
+  
+  if (
+    nomeFinal.includes('(expans') || 
+    nomeFinal.includes('expedition') || 
+    nomeFinal.includes('expansion') || 
+    nomeFinal.includes(' pack')
+  ) {
+    finalType = 'Expansão';
+  }
+
+  // 4. Log de Depuração Temporário
+  console.log({
+    nome: ludoData?.namePt || bggData?.name || game.name,
+    tipoLudo: ludoType,
+    tipoBGG: bggType,
+    resultado: finalType
+  });
 
   // Consolidação dos domínios e mecânicas
   const mergedDomains = Array.from(new Set([
@@ -71,7 +110,7 @@ export async function updateSingleGameParallel(
     ...game,
     bggId: bggId || game.bggId,
     ludoId: ludoData?.ludoId || game.ludoId,
-    type: inferredType,
+    type: finalType,
     thumbnail: ludoData?.thumbnail || bggData?.thumbnail || game.thumbnail,
     image: bggData?.image || ludoData?.image || game.image,
     yearPublished: bggData?.yearPublished || ludoData?.yearPublished || game.yearPublished,

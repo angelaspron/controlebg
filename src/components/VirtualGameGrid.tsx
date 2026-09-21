@@ -11,9 +11,9 @@ interface VirtualGameGridProps {
   onToggleSelect: (id: string) => void;
 }
 
-const ESTIMATED_ROW_HEIGHT = 440; // Altura aproximada do GameCard + gap
+const ESTIMATED_ROW_HEIGHT = 440; // Altura aproximada do GameCard vertical + gap
 const MIN_CARD_WIDTH = 280;
-const GAP = 24; // 1.5rem gap
+const GAP = 20; // 20px gap
 const OVERSCAN_ROWS = 2; // Linhas de folga acima e abaixo
 
 export function VirtualGameGrid({
@@ -126,7 +126,7 @@ export function VirtualGameGrid({
         className="games-grid"
         style={{
           display: 'grid',
-          gridTemplateColumns: columnsCount === 1 ? '1fr' : `repeat(${columnsCount}, 1fr)`,
+          gridTemplateColumns: columnsCount === 1 ? '1fr' : 'repeat(auto-fill, minmax(280px, 1fr))',
           gap: `${GAP}px`,
         }}
       >
