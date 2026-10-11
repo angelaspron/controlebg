@@ -1,6 +1,6 @@
-import { memo } from 'react';
+import { memo, useCallback } from 'react';
 import type { GameData } from '../types';
-import { Users, Star, Package, Pencil, Brain, Trophy, Award, Loader2 } from 'lucide-react';
+import { Users, Star, Package, Pencil, Brain, Trophy, Award, Loader2, Check } from 'lucide-react';
 
 interface GameCardProps {
   game: GameData;
@@ -33,6 +33,14 @@ export const GameCard = memo(function GameCard({
   const isExpansion = lowerType.includes('expans') || lowerType.includes('expansion');
   const isBase = lowerType.includes('base');
   const typeClass = isExpansion ? 'game-type expansion' : isBase ? 'game-type base' : 'game-type';
+
+  // Handler isolado com stopPropagation para alternância de seleção individual
+  const handleToggleSelect = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onToggleSelect) {
+      onToggleSelect(game.id);
+    }
+  }, [onToggleSelect, game.id]);
 
   return (
     <div 
@@ -76,24 +84,53 @@ export const GameCard = memo(function GameCard({
       )}
 
       {onToggleSelect && (
-        <div 
-          className="card-checkbox-container"
-          style={{position: 'absolute', top: '10px', right: '10px', zIndex: 10, padding: '2px', cursor: 'pointer'}}
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleSelect(game.id);
+        <button
+          type="button"
+          role="checkbox"
+          aria-checked={isSelected}
+          aria-label={`Selecionar jogo ${game.name}`}
+          className={`card-checkbox-container ${isSelected ? 'selected' : ''}`}
+          style={{
+            position: 'absolute',
+            top: '10px',
+            right: '10px',
+            zIndex: 10,
+            width: '24px',
+            height: '24px',
+            borderRadius: '6px',
+            border: isSelected ? '2px solid #6366f1' : '2px solid rgba(255, 255, 255, 0.85)',
+            backgroundColor: isSelected ? '#6366f1' : '#ffffff',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 0,
+            transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.35)',
+          }}
+          onClick={handleToggleSelect}
+          onKeyDown={(e) => {
+            if (e.key === ' ' || e.key === 'Enter') {
+              e.preventDefault();
+              e.stopPropagation();
+              if (onToggleSelect) {
+                onToggleSelect(game.id);
+              }
+            }
           }}
         >
+          {isSelected && (
+            <Check size={15} strokeWidth={3.5} color="#ffffff" style={{ pointerEvents: 'none' }} />
+          )}
           <input 
             type="checkbox" 
             checked={isSelected} 
-            onChange={(e) => {
-              e.stopPropagation();
-              onToggleSelect(game.id);
-            }}
-            style={{width: '20px', height: '20px', cursor: 'pointer', accentColor: '#6366f1'}}
+            readOnly 
+            tabIndex={-1} 
+            aria-hidden="true" 
+            style={{ display: 'none' }} 
           />
-        </div>
+        </button>
       )}
 
       <div className="game-card-image">
@@ -113,11 +150,20 @@ export const GameCard = memo(function GameCard({
             <Package size={48} opacity={0.2} />
           </div>
         )}
-        <div className="status-badge" style={{ backgroundColor: statusColor }}>
+        <div 
+          className="status-badge" 
+          style={{ 
+            backgroundColor: statusColor,
+            right: onToggleSelect ? '44px' : '12px',
+          }}
+        >
           {game.status}
         </div>
         <button
-          onClick={() => onEdit(game)}
+          onClick={(e) => {
+            e.stopPropagation();
+            onEdit(game);
+          }}
           title="Editar jogo"
           style={{
             position: 'absolute', top: '10px', left: '10px',
@@ -203,6 +249,9 @@ export const GameCard = memo(function GameCard({
   return (
     prevProps.isSelected === nextProps.isSelected &&
     prevProps.isUpdating === nextProps.isUpdating &&
-    prevProps.game === nextProps.game
+    prevProps.game === nextProps.game &&
+    prevProps.onToggleSelect === nextProps.onToggleSelect &&
+    prevProps.onClickDetails === nextProps.onClickDetails &&
+    prevProps.onEdit === nextProps.onEdit
   );
 });
