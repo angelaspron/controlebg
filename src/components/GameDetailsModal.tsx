@@ -1,5 +1,5 @@
-import React from 'react';
-import { X, Users, Star, Brain, Trophy, Calendar, ExternalLink, Pencil, Tag, Clock, Award, ShieldCheck } from 'lucide-react';
+import React, { useState } from 'react';
+import { X, Users, Star, Brain, Trophy, Calendar, ExternalLink, Pencil, Tag, Clock, Award, ShieldCheck, RefreshCw, Loader2 } from 'lucide-react';
 import type { GameData } from '../types';
 import '../components.css';
 
@@ -8,10 +8,26 @@ interface GameDetailsModalProps {
   isOpen: boolean;
   onClose: () => void;
   onEdit: (game: GameData) => void;
+  onRefresh?: (game: GameData) => Promise<void> | void;
+  isUpdating?: boolean;
 }
 
-export function GameDetailsModal({ game, isOpen, onClose, onEdit }: GameDetailsModalProps) {
+export function GameDetailsModal({ game, isOpen, onClose, onEdit, onRefresh, isUpdating }: GameDetailsModalProps) {
+  const [isRefreshingLocal, setIsRefreshingLocal] = useState(false);
+
   if (!isOpen || !game) return null;
+
+  const handleRefresh = async () => {
+    if (!onRefresh) return;
+    setIsRefreshingLocal(true);
+    try {
+      await onRefresh(game);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsRefreshingLocal(false);
+    }
+  };
 
   const isOwned = String(game.status || '').toLowerCase().includes('coleção') || String(game.status || '').toLowerCase().includes('sim');
   const statusColor = isOwned ? 'var(--status-owned)' : 'var(--status-sold)';
@@ -97,17 +113,42 @@ export function GameDetailsModal({ game, isOpen, onClose, onEdit }: GameDetailsM
               </div>
             </div>
 
-            <button
-              className="btn btn-primary"
-              onClick={() => {
-                onClose();
-                onEdit(game);
-              }}
-              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.6rem 1.2rem', fontSize: '0.9rem' }}
-            >
-              <Pencil size={16} />
-              Editar Jogo
-            </button>
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              {onRefresh && (
+                <button
+                  className="btn"
+                  onClick={handleRefresh}
+                  disabled={isRefreshingLocal || isUpdating}
+                  title="Atualizar dados do BGG, Ludopedia e Compara Jogos"
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '0.45rem',
+                    padding: '0.6rem 1.1rem', fontSize: '0.88rem',
+                    background: 'rgba(99, 102, 241, 0.2)',
+                    border: '1px solid rgba(99, 102, 241, 0.5)',
+                    color: '#c7d2fe', cursor: (isRefreshingLocal || isUpdating) ? 'wait' : 'pointer'
+                  }}
+                >
+                  {(isRefreshingLocal || isUpdating) ? (
+                    <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
+                  ) : (
+                    <RefreshCw size={16} />
+                  )}
+                  {(isRefreshingLocal || isUpdating) ? 'Atualizando...' : 'Atualizar Dados'}
+                </button>
+              )}
+
+              <button
+                className="btn btn-primary"
+                onClick={() => {
+                  onClose();
+                  onEdit(game);
+                }}
+                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.6rem 1.2rem', fontSize: '0.9rem' }}
+              >
+                <Pencil size={16} />
+                Editar Jogo
+              </button>
+            </div>
           </div>
 
           {/* Key Stats Cards */}
@@ -240,9 +281,30 @@ export function GameDetailsModal({ game, isOpen, onClose, onEdit }: GameDetailsM
               {mainDescription ? (
                 mainDescription
               ) : (
-                <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                  Nenhum resumo disponível no momento. Clique em "Atualizar via API" para carregar dados do BGG e Ludopedia.
-                </span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', color: 'var(--text-muted)' }}>
+                  <span>Nenhum resumo disponível no momento. Clique no botão abaixo para buscar dados completos do BGG e preços de mercado.</span>
+                  {onRefresh && (
+                    <button
+                      className="btn"
+                      onClick={handleRefresh}
+                      disabled={isRefreshingLocal || isUpdating}
+                      style={{
+                        alignSelf: 'flex-start',
+                        display: 'flex', alignItems: 'center', gap: '0.4rem',
+                        fontSize: '0.82rem', padding: '0.45rem 0.9rem',
+                        background: 'rgba(99, 102, 241, 0.25)', border: '1px solid rgba(99, 102, 241, 0.4)',
+                        color: '#c7d2fe', cursor: (isRefreshingLocal || isUpdating) ? 'wait' : 'pointer'
+                      }}
+                    >
+                      {(isRefreshingLocal || isUpdating) ? (
+                        <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
+                      ) : (
+                        <RefreshCw size={14} />
+                      )}
+                      {(isRefreshingLocal || isUpdating) ? 'Atualizando...' : 'Sincronizar Dados Agora'}
+                    </button>
+                  )}
+                </div>
               )}
             </div>
           </div>

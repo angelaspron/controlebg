@@ -12,6 +12,7 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "node --experimental-strip-types tests/runTests.ts",
+    "test:apis": "node --experimental-strip-types tests/test_live_apis.js",
     "test-api": "node test.js"
   },
   "dependencies": {

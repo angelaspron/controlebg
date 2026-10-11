@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { X, Search, Loader2 } from 'lucide-react';
+import { X, Search, Loader2, CheckCircle2, RefreshCw } from 'lucide-react';
 import type { GameData } from '../types';
 import '../components.css';
+import { updateSingleGameParallel } from '../services/batchProcessor';
 
 interface EditGameModalProps {
   game: GameData | null;
@@ -9,11 +10,13 @@ interface EditGameModalProps {
   onClose: () => void;
   onSave: (id: string, updates: Partial<Omit<GameData, 'id'>>) => void;
   onDelete: (id: string) => void;
-  onRefreshBGG: (game: GameData) => void;
-  onRefreshLudo: (game: GameData) => void;
+  onRefreshBGG?: (game: GameData) => void;
+  onRefreshLudo?: (game: GameData) => void;
+  bggToken?: string;
+  ludoToken?: string;
 }
 
-export function EditGameModal({ game, isOpen, onClose, onSave, onDelete, onRefreshBGG, onRefreshLudo }: EditGameModalProps) {
+export function EditGameModal({ game, isOpen, onClose, onSave, onDelete, onRefreshBGG, onRefreshLudo, bggToken, ludoToken }: EditGameModalProps) {
   const [name, setName] = useState('');
   const [bggIdInput, setBggIdInput] = useState('');
   const [status, setStatus] = useState('Na Coleção');
@@ -27,7 +30,9 @@ export function EditGameModal({ game, isOpen, onClose, onSave, onDelete, onRefre
   const [yearPublished, setYearPublished] = useState('');
   const [rating, setRating] = useState('');
   const [ludoRating, setLudoRating] = useState('');
+  const [currentThumbnail, setCurrentThumbnail] = useState<string | undefined>(undefined);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [statusMsg, setStatusMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
   useEffect(() => {
     if (game) {
@@ -44,6 +49,8 @@ export function EditGameModal({ game, isOpen, onClose, onSave, onDelete, onRefre
       setYearPublished(game.yearPublished ? String(game.yearPublished) : '');
       setRating(game.rating ? String(game.rating) : '');
       setLudoRating(game.ludoRating ? String(game.ludoRating) : '');
+      setCurrentThumbnail(game.thumbnail);
+      setStatusMsg(null);
     }
   }, [game]);
 
@@ -66,6 +73,7 @@ export function EditGameModal({ game, isOpen, onClose, onSave, onDelete, onRefre
       yearPublished: yearPublished ? parseInt(yearPublished) : undefined,
       rating: rating ? parseFloat(rating.replace(',', '.')) : undefined,
       ludoRating: ludoRating ? parseFloat(ludoRating.replace(',', '.')) : undefined,
+      thumbnail: currentThumbnail || game.thumbnail,
     });
     onClose();
   };
@@ -79,17 +87,46 @@ export function EditGameModal({ game, isOpen, onClose, onSave, onDelete, onRefre
 
   const handleRefreshBGG = async () => {
     setIsRefreshing(true);
-    // Chama refresh com bggId definido pelo usuário ou undefined para buscar por nome
-    onRefreshBGG({ ...game, name: name.trim(), bggId: bggIdInput.trim() || undefined });
-    setIsRefreshing(false);
-    onClose();
+    setStatusMsg(null);
+    try {
+      const targetBggId = bggIdInput.trim() || game.bggId;
+      const updated = await updateSingleGameParallel(
+        { ...game, name: name.trim(), bggId: targetBggId },
+        ludoToken,
+        bggToken
+      );
+
+      if (updated) {
+        setName(updated.name);
+        if (updated.bggId) setBggIdInput(updated.bggId);
+        if (updated.type) setType(updated.type);
+        if (updated.yearPublished) setYearPublished(String(updated.yearPublished));
+        if (updated.minPlayers) setMinPlayers(String(updated.minPlayers));
+        if (updated.maxPlayers) setMaxPlayers(String(updated.maxPlayers));
+        if (updated.weight) setWeight(String(Number(updated.weight.toFixed(2))));
+        if (updated.rating) setRating(String(Number(updated.rating.toFixed(2))));
+        if (updated.ludoRating) setLudoRating(String(Number(updated.ludoRating.toFixed(2))));
+        if (updated.value) setValue(String(updated.value));
+        if (updated.thumbnail) setCurrentThumbnail(updated.thumbnail);
+
+        onSave(game.id, updated);
+        if (onRefreshBGG) onRefreshBGG(updated);
+        setStatusMsg({ text: 'Dados e preços atualizados com 100% de sucesso!', type: 'success' });
+      }
+    } catch (e: any) {
+      console.error(e);
+      setStatusMsg({ text: 'Erro ao atualizar dados: ' + (e.message || 'Falha de conexão'), type: 'error' });
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   const handleRefreshLudo = async () => {
-    setIsRefreshing(true);
-    onRefreshLudo({ ...game, name: name.trim(), ludoId: undefined });
-    setIsRefreshing(false);
-    onClose();
+    if (onRefreshLudo) {
+      setIsRefreshing(true);
+      await onRefreshLudo({ ...game, name: name.trim(), ludoId: undefined });
+      setIsRefreshing(false);
+    }
   };
 
   const overlayStyle: React.CSSProperties = {
@@ -123,7 +160,23 @@ export function EditGameModal({ game, isOpen, onClose, onSave, onDelete, onRefre
             BGG ID: <a href={`https://boardgamegeek.com/boardgame/${game.bggId}`} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>#{game.bggId}</a>
           </p>
         )}
-        {!game.bggId && <div style={{ marginBottom: '1.5rem' }} />}
+        {statusMsg && (
+          <div style={{
+            padding: '0.75rem 1rem',
+            marginBottom: '1rem',
+            borderRadius: '8px',
+            fontSize: '0.9rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            background: statusMsg.type === 'success' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+            border: `1px solid ${statusMsg.type === 'success' ? 'rgba(16, 185, 129, 0.4)' : 'rgba(239, 68, 68, 0.4)'}`,
+            color: statusMsg.type === 'success' ? '#34d399' : '#f87171'
+          }}>
+            {statusMsg.type === 'success' ? <CheckCircle2 size={18} /> : <X size={18} />}
+            <span>{statusMsg.text}</span>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           <div style={{ display: 'flex', gap: '1rem' }}>
@@ -247,13 +300,14 @@ export function EditGameModal({ game, isOpen, onClose, onSave, onDelete, onRefre
           </div>
 
           {/* BGG Thumbnail preview */}
-          {game.thumbnail && (
+          {(currentThumbnail || game.thumbnail) && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.75rem', background: 'rgba(255,255,255,0.05)', borderRadius: '8px' }}>
-              <img src={game.thumbnail} alt={game.name} style={{ width: '60px', height: '60px', objectFit: 'contain', background: 'rgba(0,0,0,0.2)', borderRadius: '6px' }} />
-              <div style={{ flex: 1, fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                {game.rating && <div>⭐ BGG: {game.rating.toFixed(1)}</div>}
-                {game.yearPublished && <div>📅 {game.yearPublished}</div>}
-                {(game.minPlayers || game.maxPlayers) && <div>👥 {game.minPlayers}–{game.maxPlayers} jogadores</div>}
+              <img src={currentThumbnail || game.thumbnail} alt={name} style={{ width: '60px', height: '60px', objectFit: 'contain', background: 'rgba(0,0,0,0.2)', borderRadius: '6px' }} />
+              <div style={{ flex: 1, fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                {rating && <div>⭐ BGG: {parseFloat(rating).toFixed(1)}</div>}
+                {yearPublished && <div>📅 Ano: {yearPublished}</div>}
+                {(minPlayers || maxPlayers) && <div>👥 {minPlayers}–{maxPlayers} jogadores</div>}
+                {value && <div style={{ color: '#38bdf8' }}>🏷 Valor de Mercado: R$ {parseFloat(value.replace(',', '.')).toFixed(2)}</div>}
               </div>
             </div>
           )}
@@ -281,10 +335,11 @@ export function EditGameModal({ game, isOpen, onClose, onSave, onDelete, onRefre
                 type="button"
                 onClick={handleRefreshBGG}
                 disabled={isRefreshing}
-                style={{ background: 'rgba(99, 102, 241, 0.15)', border: '1px solid rgba(99, 102, 241, 0.4)', color: '#a5b4fc', padding: '0.65rem 1rem', borderRadius: '8px', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+                title="Sincronizar com BGG e buscar preço no Compara Jogos"
+                style={{ background: 'rgba(99, 102, 241, 0.25)', border: '1px solid rgba(99, 102, 241, 0.5)', color: '#c7d2fe', padding: '0.65rem 1.1rem', borderRadius: '8px', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.4rem' }}
               >
-                {isRefreshing ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <Search size={16} />}
-                Re-buscar BGG
+                {isRefreshing ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <RefreshCw size={16} />}
+                {isRefreshing ? 'Sincronizando...' : 'Sincronizar BGG e Preços'}
               </button>
               <button type="button" className="btn" onClick={onClose}>Cancelar</button>
               <button type="submit" className="btn btn-primary">Salvar</button>

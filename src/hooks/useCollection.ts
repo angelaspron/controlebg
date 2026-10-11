@@ -7,7 +7,7 @@ import {
   processBatchWithConcurrency, 
   type BatchProgress 
 } from '../services/batchProcessor';
-import { fetchBGGThingWithRetry, searchBGGId } from '../services/bggService';
+import { fetchBGGThingWithRetry, searchBGGId, DEFAULT_BGG_TOKEN } from '../services/bggService';
 import { fetchLudopediaData } from '../services/ludopediaService';
 import { fetchComparaJogosData } from '../services/comparaService';
 
@@ -30,6 +30,7 @@ export function useCollection() {
   const [games, setGames] = useState<GameData[]>([]);
   const [columnMapping, setColumnMapping] = useState<ColumnMapping>(defaultMapping);
   const [ludoToken, setLudoToken] = useState<string>('');
+  const [bggToken, setBggToken] = useState<string>(DEFAULT_BGG_TOKEN);
   const [isLoading, setIsLoading] = useState(true);
 
   // Estados de processamento em lote
@@ -55,7 +56,7 @@ export function useCollection() {
           console.error('Erro ao fazer parse dos dados locais', e);
         }
       }
-    } catch (e) {}
+    } catch {}
 
     try {
       const savedMapping = localStorage.getItem(MAPPING_STORAGE_KEY);
@@ -66,12 +67,17 @@ export function useCollection() {
           console.error('Erro ao fazer parse do mapping local', e);
         }
       }
-    } catch (e) {}
+    } catch {}
 
     try {
       const savedLudo = localStorage.getItem('boardgame_manager_ludo_token');
       if (savedLudo) setLudoToken(savedLudo);
-    } catch (e) {}
+    } catch {}
+
+    try {
+      const savedBgg = localStorage.getItem('boardgame_manager_bgg_token');
+      if (savedBgg) setBggToken(savedBgg);
+    } catch {}
 
     setIsLoading(false);
   }, []);
@@ -81,19 +87,20 @@ export function useCollection() {
     if (!isLoading) {
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(games));
-      } catch (e) {}
+      } catch {}
     }
   }, [games, isLoading]);
 
-  // Salvar mapping no Local Storage
+  // Salvar mapping e tokens no Local Storage
   useEffect(() => {
     if (!isLoading) {
       try {
         localStorage.setItem(MAPPING_STORAGE_KEY, JSON.stringify(columnMapping));
         localStorage.setItem('boardgame_manager_ludo_token', ludoToken);
-      } catch (e) {}
+        localStorage.setItem('boardgame_manager_bgg_token', bggToken);
+      } catch {}
     }
-  }, [columnMapping, ludoToken, isLoading]);
+  }, [columnMapping, ludoToken, bggToken, isLoading]);
 
   const cancelBatchUpdate = () => {
     if (abortControllerRef.current) {
@@ -216,6 +223,7 @@ export function useCollection() {
       await batchUpdateGamesParallel(gameList, {
         concurrencyLimit: 5,
         ludoToken,
+        bggToken,
         signal: abortControllerRef.current.signal,
         onGameStart: (id) => {
           setUpdatingGameIds(prev => new Set(prev).add(id));
@@ -272,11 +280,11 @@ export function useCollection() {
 
           let bggId = game.bggId;
           if (!bggId) {
-            bggId = (await searchBGGId(game.name)) || undefined;
+            bggId = (await searchBGGId(game.name, { token: bggToken })) || undefined;
           }
 
           if (bggId) {
-            const bggData = await fetchBGGThingWithRetry(bggId);
+            const bggData = await fetchBGGThingWithRetry(bggId, { token: bggToken });
             if (bggData) {
               setGames(prev => prev.map(g => {
                 if (g.id !== game.id) return g;
@@ -605,7 +613,8 @@ export function useCollection() {
     try {
       setIsLoading(true);
       const url = bggUrl(`collection?username=${encodeURIComponent(username)}&stats=1`);
-      const fetchOpts = { headers: { 'Authorization': 'Bearer cdbac8cf-91ac-4af7-9d1f-266544061d52' } };
+      const activeBggToken = bggToken || DEFAULT_BGG_TOKEN;
+      const fetchOpts = activeBggToken ? { headers: { 'Authorization': `Bearer ${activeBggToken}` } } : {};
       
       let res = await fetch(url, fetchOpts);
       
@@ -811,6 +820,8 @@ export function useCollection() {
     isLoading,
     ludoToken,
     setLudoToken,
+    bggToken,
+    setBggToken,
     // Lote e Progresso
     isBatchUpdating,
     batchProgress,

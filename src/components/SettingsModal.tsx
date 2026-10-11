@@ -9,19 +9,23 @@ interface SettingsModalProps {
   onSave: (mapping: ColumnMapping) => void;
   ludoToken: string;
   setLudoToken: (token: string) => void;
+  bggToken?: string;
+  setBggToken?: (token: string) => void;
   onOpenHelp?: () => void;
 }
 
-export function SettingsModal({ isOpen, onClose, mapping, onSave, ludoToken, setLudoToken, onOpenHelp }: SettingsModalProps) {
+export function SettingsModal({ isOpen, onClose, mapping, onSave, ludoToken, setLudoToken, bggToken, setBggToken, onOpenHelp }: SettingsModalProps) {
   const [localMapping, setLocalMapping] = useState<ColumnMapping>(mapping);
   const [localToken, setLocalToken] = useState<string>(ludoToken);
+  const [localBggToken, setLocalBggToken] = useState<string>(bggToken || '');
 
   useEffect(() => {
     if (isOpen) {
       setLocalMapping(mapping);
       setLocalToken(ludoToken);
+      setLocalBggToken(bggToken || '');
     }
-  }, [isOpen, mapping, ludoToken]);
+  }, [isOpen, mapping, ludoToken, bggToken]);
 
   if (!isOpen) return null;
 
@@ -33,6 +37,7 @@ export function SettingsModal({ isOpen, onClose, mapping, onSave, ludoToken, set
     e.preventDefault();
     onSave(localMapping);
     setLudoToken(localToken);
+    if (setBggToken) setBggToken(localBggToken);
     onClose();
   };
 
@@ -130,6 +135,22 @@ export function SettingsModal({ isOpen, onClose, mapping, onSave, ludoToken, set
               onChange={e => setLocalToken(e.target.value)}
               placeholder="Ex: 1b3c3e8def1c6983e5519bb310992707"
             />
+
+            <div style={{ marginTop: '0.8rem' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                BoardGameGeek Token (Opcional)
+                <span title="Disponível em boardgamegeek.com/applications para acesso direto às estatísticas da XML API2" style={{ display: 'flex', alignItems: 'center', cursor: 'help' }}>
+                  <Info size={16} color="var(--text-muted)" />
+                </span>
+              </label>
+              <input
+                type="text"
+                className="search-input"
+                value={localBggToken}
+                onChange={e => setLocalBggToken(e.target.value)}
+                placeholder="Token de Aplicação BGG"
+              />
+            </div>
           </div>
 
           <div className="modal-footer" style={{ marginTop: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

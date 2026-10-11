@@ -14,6 +14,7 @@ export interface BatchProgress {
 export interface BatchOptions {
   concurrencyLimit?: number;
   ludoToken?: string;
+  bggToken?: string;
   onProgress?: (progress: BatchProgress) => void;
   onGameStart?: (gameId: string) => void;
   onGameComplete?: (updatedGame: GameData) => void;
@@ -26,16 +27,17 @@ export interface BatchOptions {
  */
 export async function updateSingleGameParallel(
   game: GameData,
-  ludoToken?: string
+  ludoToken?: string,
+  bggToken?: string
 ): Promise<GameData> {
   let bggId = game.bggId;
   if (!bggId) {
-    bggId = (await searchBGGId(game.name)) || undefined;
+    bggId = (await searchBGGId(game.name, { token: bggToken })) || undefined;
   }
 
   // Executa chamadas concorrentes para as 3 APIs baseadas no BGG ID e Nome
   const [bggResult, ludoResult, comparaResult] = await Promise.allSettled([
-    bggId ? fetchBGGThingWithRetry(bggId) : Promise.resolve(null),
+    bggId ? fetchBGGThingWithRetry(bggId, { token: bggToken }) : Promise.resolve(null),
     ludoToken ? fetchLudopediaData(game.name, ludoToken, game.ludoId) : Promise.resolve(null),
     fetchComparaJogosData(game.name, bggId),
   ]);
@@ -193,7 +195,7 @@ export async function batchUpdateGamesParallel(
         });
       }
 
-      const updated = await updateSingleGameParallel(game, options.ludoToken);
+      const updated = await updateSingleGameParallel(game, options.ludoToken, options.bggToken);
       completed++;
 
       if (options.onGameComplete) {

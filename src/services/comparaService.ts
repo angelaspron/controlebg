@@ -163,3 +163,36 @@ export async function fetchComparaJogosData(
 
   return null;
 }
+
+export async function searchBggIdViaCompara(gameName: string): Promise<string | null> {
+  const query = `
+    query SearchBggId($nameExact: String!, $nameLike: String!) {
+      byExact: product(where: {name: {_ilike: $nameExact}, type: {_in: [game, expansion]}}, limit: 1) {
+        bgg_id
+      }
+      byLike: product(where: {name: {_ilike: $nameLike}, type: {_in: [game, expansion]}}, limit: 1) {
+        bgg_id
+      }
+    }
+  `;
+  try {
+    const res = await fetch('https://api.comparajogos.com.br/v1/graphql', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query,
+        variables: { nameExact: gameName, nameLike: `%${gameName}%` }
+      })
+    });
+    if (!res.ok) return null;
+    const json = await res.json();
+    const product = json?.data?.byExact?.[0] || json?.data?.byLike?.[0];
+    if (product?.bgg_id) {
+      return String(product.bgg_id);
+    }
+  } catch (e) {
+    console.error(`Erro ao buscar BGG ID via Compara Jogos para "${gameName}":`, e);
+  }
+  return null;
+}
+

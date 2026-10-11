@@ -1,11 +1,12 @@
 import { memo, useCallback } from 'react';
 import type { GameData } from '../types';
-import { Users, Star, Package, Pencil, Brain, Trophy, Award, Loader2, Check } from 'lucide-react';
+import { Users, Star, Package, Pencil, Brain, Trophy, Award, Loader2, Check, RefreshCw } from 'lucide-react';
 
 interface GameCardProps {
   game: GameData;
   onEdit: (game: GameData) => void;
   onClickDetails?: (game: GameData) => void;
+  onRefresh?: (game: GameData) => void;
   isSelected?: boolean;
   isUpdating?: boolean;
   onToggleSelect?: (id: string) => void;
@@ -14,7 +15,8 @@ interface GameCardProps {
 export const GameCard = memo(function GameCard({ 
   game, 
   onEdit, 
-  onClickDetails, 
+  onClickDetails,
+  onRefresh,
   isSelected = false, 
   isUpdating = false,
   onToggleSelect 
@@ -179,6 +181,29 @@ export const GameCard = memo(function GameCard({
           <Pencil size={13} />
           Editar
         </button>
+        {onRefresh && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onRefresh(game);
+            }}
+            disabled={isUpdating}
+            title="Atualizar dados e preço deste jogo via APIs"
+            style={{
+              position: 'absolute', top: '10px', left: '76px',
+              background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)',
+              border: '1px solid rgba(255,255,255,0.15)',
+              color: '#fff', borderRadius: '8px', padding: '5px 8px',
+              cursor: isUpdating ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', gap: '4px',
+              fontSize: '0.75rem', fontWeight: 500, transition: 'all 0.2s ease',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(99,102,241,0.7)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'rgba(0,0,0,0.55)')}
+          >
+            <RefreshCw size={12} style={{ animation: isUpdating ? 'spin 1s linear infinite' : 'none' }} />
+            Atualizar
+          </button>
+        )}
       </div>
 
       <div className="game-card-content">
@@ -252,6 +277,7 @@ export const GameCard = memo(function GameCard({
     prevProps.game === nextProps.game &&
     prevProps.onToggleSelect === nextProps.onToggleSelect &&
     prevProps.onClickDetails === nextProps.onClickDetails &&
-    prevProps.onEdit === nextProps.onEdit
+    prevProps.onEdit === nextProps.onEdit &&
+    prevProps.onRefresh === nextProps.onRefresh
   );
 });

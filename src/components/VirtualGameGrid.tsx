@@ -8,6 +8,7 @@ interface VirtualGameGridProps {
   updatingGameIds: Set<string>;
   onEditGame: (game: GameData) => void;
   onClickDetails: (game: GameData) => void;
+  onRefreshGame?: (game: GameData) => void;
   onToggleSelect: (id: string) => void;
 }
 
@@ -22,6 +23,7 @@ export function VirtualGameGrid({
   updatingGameIds,
   onEditGame,
   onClickDetails,
+  onRefreshGame,
   onToggleSelect,
 }: VirtualGameGridProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -137,6 +139,7 @@ export function VirtualGameGrid({
               game={game}
               onEdit={onEditGame}
               onClickDetails={onClickDetails}
+              onRefresh={onRefreshGame}
               isSelected={selectedGameIds.has(game.id)}
               isUpdating={updatingGameIds.has(game.id)}
               onToggleSelect={onToggleSelect}

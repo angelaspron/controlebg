@@ -23,6 +23,8 @@ function App() {
     isLoading, 
     ludoToken, 
     setLudoToken, 
+    bggToken,
+    setBggToken, 
     processExcelUpload, 
     fetchBGGCollection, 
     fetchLudoCollection, 
@@ -55,6 +57,12 @@ function App() {
   const [isReportsModalOpen, setIsReportsModalOpen] = useState(false);
   const [editingGame, setEditingGame] = useState<GameData | null>(null);
   const [viewingGame, setViewingGame] = useState<GameData | null>(null);
+  
+  // Mantém os dados da modal de detalhes sempre em sincronia com o estado global da coleção
+  const activeViewingGame = useMemo(() => {
+    if (!viewingGame) return null;
+    return games.find(g => g.id === viewingGame.id) || viewingGame;
+  }, [viewingGame, games]);
   const [selectedGameIds, setSelectedGameIds] = useState<Set<string>>(new Set());
   const [showFinancials, setShowFinancials] = useState(true);
   const [username, setUsername] = useState<string | null>(() => {
@@ -572,6 +580,7 @@ function App() {
               updatingGameIds={updatingGameIds}
               onEditGame={handleEditGame}
               onClickDetails={handleClickDetails}
+              onRefreshGame={(game) => updateGamesParallel([game])}
               onToggleSelect={toggleSelection}
             />
 
@@ -587,10 +596,12 @@ function App() {
 
     {/* Modais fora do container animado para que position:fixed funcione em relação ao viewport */}
     <GameDetailsModal
-      game={viewingGame}
-      isOpen={viewingGame !== null}
+      game={activeViewingGame}
+      isOpen={activeViewingGame !== null}
       onClose={() => setViewingGame(null)}
       onEdit={setEditingGame}
+      onRefresh={(game) => updateGamesParallel([game])}
+      isUpdating={activeViewingGame ? updatingGameIds.has(activeViewingGame.id) : false}
     />
 
     <AddGameModal
@@ -598,6 +609,7 @@ function App() {
       onClose={() => setIsAddModalOpen(false)}
       onAdd={addGame}
       ludoToken={ludoToken}
+      bggToken={bggToken}
     />
 
     <EditGameModal
@@ -606,8 +618,10 @@ function App() {
       onClose={() => setEditingGame(null)}
       onSave={editGame}
       onDelete={deleteGame}
-      onRefreshBGG={(game) => fetchBGGDataForGames([game])}
+      onRefreshBGG={(game) => updateGamesParallel([game])}
       onRefreshLudo={(game) => fetchLudoDataForGames([game])}
+      bggToken={bggToken}
+      ludoToken={ludoToken}
     />
 
     <SettingsModal
@@ -617,6 +631,8 @@ function App() {
       onSave={setColumnMapping}
       ludoToken={ludoToken}
       setLudoToken={setLudoToken}
+      bggToken={bggToken}
+      setBggToken={setBggToken}
       onOpenHelp={() => {
         setIsSettingsModalOpen(false);
         setIsHelpModalOpen(true);

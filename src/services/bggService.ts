@@ -1,4 +1,5 @@
 import { XMLParser } from 'fast-xml-parser';
+import { searchBggIdViaCompara } from './comparaService.ts';
 
 const xmlParser = new XMLParser({
   ignoreAttributes: false,
@@ -83,7 +84,7 @@ export function parseBGGThingXml(xmlText: string): BGGParsedData | null {
       const type = link['@_type'];
       const value = link['@_value'];
       
-      if (type === 'boardgameexpansion') {
+      if (type === 'boardgameexpansion' && (link['@_inbound'] === 'true' || link['@_inbound'] === true)) {
         isExpansion = true;
         bggType = 'Expansão';
       }
@@ -209,17 +210,76 @@ export function parseBGGThingXml(xmlText: string): BGGParsedData | null {
   }
 }
 
+export async function fetchBGGGeekitems(bggId: string): Promise<BGGParsedData | null> {
+  try {
+    const url = `https://boardgamegeek.com/api/geekitems?objectid=${bggId}&objecttype=thing`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const json = await res.json();
+    const item = json.item;
+    if (!item) return null;
+
+    const mechanics: string[] = item.links?.boardgamemechanic?.map((m: any) => m.name) || [];
+    const categories: string[] = item.links?.boardgamecategory?.map((c: any) => c.name) || [];
+    const honors: string[] = item.links?.boardgamehonor?.map((h: any) => h.name) || [];
+    const expands = item.links?.expandsboardgame || [];
+    const isExpansion = item.subtype === 'boardgameexpansion' || (Array.isArray(expands) && expands.length > 0);
+
+    let cleanDesc: string | undefined;
+    const rawDesc = item.description || item.short_description;
+    if (rawDesc) {
+      cleanDesc = String(rawDesc)
+        .replace(/<[^>]*>?/gm, '')
+        .replace(/&quot;/g, '"')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&#10;/g, '\n')
+        .replace(/&rsquo;/g, "'")
+        .replace(/&lsquo;/g, "'")
+        .trim();
+    }
+
+    return {
+      bggId: String(bggId),
+      name: item.name,
+      type: isExpansion ? 'Expansão' : 'Base',
+      isExpansion,
+      thumbnail: item.images?.thumb,
+      image: item.images?.original,
+      minPlayers: item.minplayers ? parseInt(item.minplayers, 10) : undefined,
+      maxPlayers: item.maxplayers ? parseInt(item.maxplayers, 10) : undefined,
+      yearPublished: item.yearpublished ? parseInt(item.yearpublished, 10) : undefined,
+      domains: [...categories, ...mechanics],
+      mechanics: mechanics.length > 0 ? mechanics : undefined,
+      honors: honors.length > 0 ? honors : undefined,
+      description: cleanDesc,
+    };
+  } catch (e) {
+    console.error(`Erro ao consultar fallback JSON BGG geekitems para ID ${bggId}:`, e);
+    return null;
+  }
+}
+
+export const DEFAULT_BGG_TOKEN = 'cdbac8cf-91ac-4af7-9d1f-266544061d52';
+
 export async function fetchBGGThingWithRetry(
   bggId: string,
-  options: { maxRetries?: number } = {}
+  options: { maxRetries?: number; token?: string } = {}
 ): Promise<BGGParsedData | null> {
   const maxRetries = options.maxRetries ?? 5;
+  const token = options.token || DEFAULT_BGG_TOKEN;
   const url = `https://boardgamegeek.com/xmlapi2/thing?id=${bggId}&stats=1`;
+
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
 
   let attempt = 0;
   while (attempt < maxRetries) {
     try {
-      const res = await fetch(url);
+      const res = await fetch(url, { headers });
 
       if (res.status === 202) {
         // 202 Queued pelo BGG
@@ -238,13 +298,20 @@ export async function fetchBGGThingWithRetry(
         continue;
       }
 
+      if (res.status === 401) {
+        // BGG agora exige token para XMLAPI2. Faz fallback imediato para a API JSON pública do BGG
+        return await fetchBGGGeekitems(bggId);
+      }
+
       if (!res.ok) {
-        console.error(`BGG erro HTTP ${res.status} para ID ${bggId}`);
-        return null;
+        console.warn(`BGG erro HTTP ${res.status} para ID ${bggId}. Tentando fallback JSON.`);
+        return await fetchBGGGeekitems(bggId);
       }
 
       const text = await res.text();
-      return parseBGGThingXml(text);
+      const parsed = parseBGGThingXml(text);
+      if (parsed) return parsed;
+      return await fetchBGGGeekitems(bggId);
     } catch (e) {
       console.error(`Erro de rede ao buscar BGG ID ${bggId}:`, e);
       attempt++;
@@ -252,35 +319,47 @@ export async function fetchBGGThingWithRetry(
     }
   }
 
-  return null;
+  return await fetchBGGGeekitems(bggId);
 }
 
-export async function searchBGGId(gameName: string): Promise<string | null> {
-  const trySearch = async (exact: boolean): Promise<string | null> => {
-    const url = `https://boardgamegeek.com/xmlapi2/search?query=${encodeURIComponent(gameName)}&type=boardgame,boardgameexpansion${exact ? '&exact=1' : ''}`;
-    try {
-      let res = await fetch(url);
-      let retries = 0;
-      while ((res.status === 429 || res.status === 202) && retries < 4) {
-        const delay = Math.min(1000 * Math.pow(2, retries) + 200, 8000);
-        await new Promise(r => setTimeout(r, delay));
-        res = await fetch(url);
-        retries++;
-      }
-      if (!res.ok) return null;
-      const text = await res.text();
-      const obj = xmlParser.parse(text);
-      if (obj?.items?.item) {
-        const items = Array.isArray(obj.items.item) ? obj.items.item : [obj.items.item];
-        return items[0]?.['@_id'] ?? null;
-      }
-    } catch (e) {
-      console.error(`Erro ao pesquisar BGG por "${gameName}":`, e);
-    }
-    return null;
-  };
+export async function searchBGGId(
+  gameName: string,
+  options: { token?: string } = {}
+): Promise<string | null> {
+  const token = options.token || DEFAULT_BGG_TOKEN;
 
-  const exactMatch = await trySearch(true);
-  if (exactMatch) return exactMatch;
-  return await trySearch(false);
+  if (token) {
+    const trySearch = async (exact: boolean): Promise<string | null> => {
+      const url = `https://boardgamegeek.com/xmlapi2/search?query=${encodeURIComponent(gameName)}&type=boardgame,boardgameexpansion${exact ? '&exact=1' : ''}`;
+      try {
+        const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
+        let res = await fetch(url, { headers });
+        let retries = 0;
+        while ((res.status === 429 || res.status === 202) && retries < 4) {
+          const delay = Math.min(1000 * Math.pow(2, retries) + 200, 8000);
+          await new Promise(r => setTimeout(r, delay));
+          res = await fetch(url, { headers });
+          retries++;
+        }
+        if (!res.ok) return null;
+        const text = await res.text();
+        const obj = xmlParser.parse(text);
+        if (obj?.items?.item) {
+          const items = Array.isArray(obj.items.item) ? obj.items.item : [obj.items.item];
+          return items[0]?.['@_id'] ?? null;
+        }
+      } catch (e) {
+        console.error(`Erro ao pesquisar BGG por "${gameName}":`, e);
+      }
+      return null;
+    };
+
+    const exactMatch = await trySearch(true);
+    if (exactMatch) return exactMatch;
+    const partialMatch = await trySearch(false);
+    if (partialMatch) return partialMatch;
+  }
+
+  // Fallback transparente e resiliente através da base de produtos do Compara Jogos
+  return await searchBggIdViaCompara(gameName);
 }

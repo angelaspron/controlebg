@@ -1,17 +1,20 @@
 import React, { useState } from 'react';
-import { X, Search } from 'lucide-react';
+import { X, Search, Loader2, CheckCircle2 } from 'lucide-react';
 import type { GameData } from '../types';
 import '../components.css';
 import { XMLParser } from 'fast-xml-parser';
+import { fetchBGGThingWithRetry, DEFAULT_BGG_TOKEN } from '../services/bggService';
+import { fetchComparaJogosData } from '../services/comparaService';
 
 interface AddGameModalProps {
   isOpen: boolean;
   onClose: () => void;
   onAdd: (game: Omit<GameData, 'id'>) => void;
   ludoToken?: string;
+  bggToken?: string;
 }
 
-export function AddGameModal({ isOpen, onClose, onAdd, ludoToken }: AddGameModalProps) {
+export function AddGameModal({ isOpen, onClose, onAdd, ludoToken, bggToken }: AddGameModalProps) {
   const [name, setName] = useState('');
   const [bggId, setBggId] = useState<string | undefined>(undefined);
   const [ludoId, setLudoId] = useState<string | undefined>(undefined);
@@ -27,19 +30,88 @@ export function AddGameModal({ isOpen, onClose, onAdd, ludoToken }: AddGameModal
   const [rating, setRating] = useState('');
   const [ludoRating, setLudoRating] = useState('');
 
+  // Estados adicionais de dados enriquecidos da API
+  const [thumbnail, setThumbnail] = useState<string | undefined>(undefined);
+  const [image, setImage] = useState<string | undefined>(undefined);
+  const [description, setDescription] = useState<string | undefined>(undefined);
+  const [rank, setRank] = useState<number | undefined>(undefined);
+  const [geekRating, setGeekRating] = useState<number | undefined>(undefined);
+  const [retailPrice, setRetailPrice] = useState<number | undefined>(undefined);
+  const [usedPrice, setUsedPrice] = useState<number | undefined>(undefined);
+  const [mechanics, setMechanics] = useState<string[] | undefined>(undefined);
+  const [honors, setHonors] = useState<string[] | undefined>(undefined);
+  const [suggestedPlayers, setSuggestedPlayers] = useState<any | undefined>(undefined);
+
   const [isSearching, setIsSearching] = useState(false);
+  const [isLoadingDetails, setIsLoadingDetails] = useState(false);
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [searchSource, setSearchSource] = useState<'bgg'|'ludo'>('bgg');
 
   if (!isOpen) return null;
 
+  const loadDetailsFromBGG = async (targetBggId: string, baseGameName: string) => {
+    setIsLoadingDetails(true);
+    try {
+      const activeToken = bggToken || DEFAULT_BGG_TOKEN;
+      const [bggRes, comparaRes] = await Promise.allSettled([
+        fetchBGGThingWithRetry(targetBggId, { token: activeToken }),
+        fetchComparaJogosData(baseGameName || name, targetBggId)
+      ]);
+
+      if (bggRes.status === 'fulfilled' && bggRes.value) {
+        const d = bggRes.value;
+        if (d.name) setName(d.name);
+        if (d.type) setType(d.type);
+        if (d.yearPublished) setYearPublished(String(d.yearPublished));
+        if (d.minPlayers) setMinPlayers(String(d.minPlayers));
+        if (d.maxPlayers) setMaxPlayers(String(d.maxPlayers));
+        if (d.weight) setWeight(String(Number(d.weight.toFixed(2))));
+        if (d.rating) setRating(String(Number(d.rating.toFixed(2))));
+        if (d.thumbnail) setThumbnail(d.thumbnail);
+        if (d.image) setImage(d.image);
+        if (d.description) setDescription(d.description);
+        if (d.rank) setRank(d.rank);
+        if (d.geekRating) setGeekRating(d.geekRating);
+        if (d.mechanics) setMechanics(d.mechanics);
+        if (d.honors) setHonors(d.honors);
+        if (d.suggestedPlayers) setSuggestedPlayers(d.suggestedPlayers);
+      }
+
+      if (comparaRes.status === 'fulfilled' && comparaRes.value) {
+        const p = comparaRes.value;
+        if (p.retailPrice) {
+          setRetailPrice(p.retailPrice);
+          setValue(String(p.retailPrice));
+        } else if (p.usedPrice) {
+          setUsedPrice(p.usedPrice);
+          setValue(String(p.usedPrice));
+        }
+      }
+    } catch (e) {
+      console.error('Erro ao autocarregar dados do BGG:', e);
+    } finally {
+      setIsLoadingDetails(false);
+    }
+  };
+
   const handleSearchBGG = async () => {
-    if (!name.trim()) return;
+    const trimmed = name.trim();
+    if (!trimmed) return;
+
+    // Se o usuário digitou diretamente o BGG ID (apenas dígitos)
+    if (/^\d+$/.test(trimmed)) {
+      setBggId(trimmed);
+      await loadDetailsFromBGG(trimmed, '');
+      return;
+    }
+
     setIsSearching(true);
+    setSearchSource('bgg');
     setSearchResults([]);
     try {
-      const url = `https://boardgamegeek.com/xmlapi2/search?query=${encodeURIComponent(name.trim())}&type=boardgame,boardgameexpansion`;
-      const res = await fetch(url, { headers: { 'Authorization': 'Bearer cdbac8cf-91ac-4af7-9d1f-266544061d52' } });
+      const activeToken = bggToken || DEFAULT_BGG_TOKEN;
+      const url = `https://boardgamegeek.com/xmlapi2/search?query=${encodeURIComponent(trimmed)}&type=boardgame,boardgameexpansion`;
+      const res = await fetch(url, { headers: { 'Authorization': `Bearer ${activeToken}` } });
       if (res.ok) {
         const text = await res.text();
         const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_' });
@@ -81,19 +153,22 @@ export function AddGameModal({ isOpen, onClose, onAdd, ludoToken }: AddGameModal
     }
   };
 
-  const selectItem = (item: any) => {
+  const selectItem = async (item: any) => {
     if (searchSource === 'bgg') {
       let itemName = 'Jogo Desconhecido';
       if (item.name) {
         itemName = typeof item.name === 'string' ? item.name : (item.name['#text'] || item.name['@_value'] || 'Jogo Desconhecido');
       }
+      const selectedId = String(item['@_id']);
       setName(itemName);
-      setBggId(item['@_id']);
+      setBggId(selectedId);
+      setSearchResults([]);
+      await loadDetailsFromBGG(selectedId, itemName);
     } else {
       setName(item.nm_jogo || 'Jogo Desconhecido');
       setLudoId(String(item.id_jogo));
+      setSearchResults([]);
     }
-    setSearchResults([]);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -115,6 +190,16 @@ export function AddGameModal({ isOpen, onClose, onAdd, ludoToken }: AddGameModal
       yearPublished: yearPublished ? parseInt(yearPublished) : undefined,
       rating: rating ? parseFloat(rating.replace(',', '.')) : undefined,
       ludoRating: ludoRating ? parseFloat(ludoRating.replace(',', '.')) : undefined,
+      thumbnail,
+      image,
+      description,
+      rank,
+      geekRating,
+      retailPrice,
+      usedPrice,
+      mechanics,
+      honors,
+      suggestedPlayers,
     });
     
     // Limpar form
@@ -132,6 +217,16 @@ export function AddGameModal({ isOpen, onClose, onAdd, ludoToken }: AddGameModal
     setYearPublished('');
     setRating('');
     setLudoRating('');
+    setThumbnail(undefined);
+    setImage(undefined);
+    setDescription(undefined);
+    setRank(undefined);
+    setGeekRating(undefined);
+    setRetailPrice(undefined);
+    setUsedPrice(undefined);
+    setMechanics(undefined);
+    setHonors(undefined);
+    setSuggestedPlayers(undefined);
     setSearchResults([]);
     onClose();
   };
@@ -235,7 +330,46 @@ export function AddGameModal({ isOpen, onClose, onAdd, ludoToken }: AddGameModal
                 })}
               </div>
             )}
-            {bggId && (
+            {isLoadingDetails && (
+              <div style={{ marginTop: '0.75rem', padding: '0.6rem 1rem', background: 'rgba(99, 102, 241, 0.15)', border: '1px solid rgba(99, 102, 241, 0.3)', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '0.6rem', color: '#a5b4fc', fontSize: '0.85rem' }}>
+                <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
+                <span>Buscando dados no BGG e preços no Compara Jogos...</span>
+              </div>
+            )}
+
+            {thumbnail && (
+              <div style={{
+                marginTop: '0.75rem',
+                padding: '0.75rem',
+                background: 'rgba(255, 255, 255, 0.04)',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                borderRadius: '10px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '1rem',
+              }}>
+                <img
+                  src={thumbnail}
+                  alt={name}
+                  style={{ width: '60px', height: '60px', objectFit: 'cover', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)' }}
+                />
+                <div style={{ flex: 1, fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                  <div style={{ fontWeight: 600, color: '#fff', fontSize: '0.95rem' }}>{name}</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', marginTop: '0.25rem' }}>
+                    {bggId && <span style={{ color: '#a5b4fc' }}>BGG #{bggId}</span>}
+                    {yearPublished && <span>📅 {yearPublished}</span>}
+                    {rank && <span style={{ color: '#10b981' }}>🏆 Rank #{rank}</span>}
+                    {rating && <span style={{ color: '#fbbf24' }}>⭐ BGG {rating}</span>}
+                    {retailPrice && <span style={{ color: '#38bdf8' }}>🏷 R$ {retailPrice.toFixed(2)}</span>}
+                  </div>
+                </div>
+                <div style={{ color: '#10b981', display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.8rem', fontWeight: 600 }}>
+                  <CheckCircle2 size={16} /> 100% Integrado
+                </div>
+              </div>
+            )}
+
+            {bggId && !thumbnail && (
               <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: '#a5b4fc' }}>✓ Vinculado ao BGG (ID: {bggId})</div>
             )}
             {ludoId && (
