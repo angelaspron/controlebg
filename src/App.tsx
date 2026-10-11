@@ -10,6 +10,7 @@ import { BGGImportModal } from './components/BGGImportModal';
 import { LudoImportModal } from './components/LudoImportModal';
 import { ReportsModal } from './components/ReportsModal';
 import { HelpModal } from './components/HelpModal';
+import { PlayedStatusChart } from './components/PlayedStatusChart';
 import type { GameData } from './types';
 import { LoginScreen } from './components/LoginScreen';
 import './index.css';
@@ -47,6 +48,8 @@ function App() {
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('Todos');
+  const [typeFilter, setTypeFilter] = useState('Todos');
+  const [playedFilter, setPlayedFilter] = useState<'Todos' | 'Jogados' | 'Não Jogados'>('Todos');
   const [rankFilter, setRankFilter] = useState('Todos');
   const [sortBy, setSortBy] = useState('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
@@ -174,8 +177,6 @@ function App() {
     }
   };
 
-  const [typeFilter, setTypeFilter] = useState('Todos');
-
   // Helper para normalizar o tipo
   const normalizeType = (typeStr?: string) => {
     const lower = String(typeStr || '').toLowerCase().trim();
@@ -212,7 +213,12 @@ function App() {
       else if (rankFilter === 'Top 1000') matchesRank = game.rank ? game.rank <= 1000 : false;
       else if (rankFilter === 'Com Ranking') matchesRank = !!game.rank;
 
-      return matchesSearch && matchesStatus && matchesType && matchesRank;
+      const matchesPlayed = 
+        playedFilter === 'Todos' ||
+        (playedFilter === 'Jogados' && Boolean(game.isPlayed)) ||
+        (playedFilter === 'Não Jogados' && !game.isPlayed);
+
+      return matchesSearch && matchesStatus && matchesType && matchesRank && matchesPlayed;
     });
 
     return filtered.sort((a, b) => {
@@ -249,7 +255,7 @@ function App() {
       }
       return sortOrder === 'asc' ? comparison : -comparison;
     });
-  }, [games, searchTerm, statusFilter, typeFilter, rankFilter, sortBy, sortOrder]);
+  }, [games, searchTerm, statusFilter, typeFilter, rankFilter, playedFilter, sortBy, sortOrder]);
 
   useEffect(() => {
     // Limpar seleção quando a lista muda
@@ -475,6 +481,9 @@ function App() {
               </div>
             </div>
 
+            {/* Dashboard Analítico: Rastreamento de Partidas (Base vs Expansões x Jogado vs Não Jogado) */}
+            <PlayedStatusChart games={filteredGames} />
+
             {selectedGameIds.size > 0 && (
               <div className="glass-panel" style={{padding: '1rem', marginBottom: '2rem', display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap'}}>
                 <span style={{fontWeight: 'bold', marginRight: '0.5rem'}}>{selectedGameIds.size} jogos selecionados</span>
@@ -535,6 +544,16 @@ function App() {
                   {availableTypes.map(t => (
                     <option key={t} value={t}>{t === 'Todos' ? 'Tipo: Todos' : t}</option>
                   ))}
+                </select>
+                <select
+                  className="search-input"
+                  style={{minWidth: '140px'}}
+                  value={playedFilter}
+                  onChange={e => setPlayedFilter(e.target.value as 'Todos' | 'Jogados' | 'Não Jogados')}
+                >
+                  <option value="Todos">Partidas: Todos</option>
+                  <option value="Jogados">Jogados</option>
+                  <option value="Não Jogados">Não Jogados</option>
                 </select>
                 <select
                   className="search-input"

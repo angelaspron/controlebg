@@ -132,6 +132,9 @@ export async function updateSingleGameParallel(
     retailPrice: comparaData?.retailPrice || game.retailPrice,
     usedPrice: comparaData?.usedPrice || game.usedPrice,
     value: marketValue,
+    isPlayed: (game.isPlayed !== undefined || ludoData?.isPlayed !== undefined)
+      ? Boolean(game.isPlayed || ludoData?.isPlayed)
+      : undefined,
   };
 }
 

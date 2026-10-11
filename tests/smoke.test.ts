@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { parseBGGThingXml } from '../src/services/bggService.ts';
-import { parseLudopediaDetail } from '../src/services/ludopediaService.ts';
+import { parseLudopediaDetail, parseIsPlayedFromLudo } from '../src/services/ludopediaService.ts';
 import { parseComparaPrices } from '../src/services/comparaService.ts';
+import { matchesGameName } from '../src/utils/nameMatcher.ts';
 import type { GameData } from '../src/types/index.ts';
 
 export async function runSmokeTests(logger: (msg: string) => void): Promise<{ passed: number; failed: number }> {
@@ -104,6 +105,7 @@ export async function runSmokeTests(logger: (msg: string) => void): Promise<{ pa
     assert.equal(parsed.bggId, '120643');
     assert.equal(parsed.ludoRating, 8.8);
     assert.equal(parsed.rank, 12);
+    assert.equal(parsed.isPlayed, false);
   });
 
   // Smoke 3: Compara Jogos Parser
@@ -134,6 +136,7 @@ export async function runSmokeTests(logger: (msg: string) => void): Promise<{ pa
       spend: 150,
       type: 'Base',
       value: 200,
+      isPlayed: true,
       geekRating: 7.15,
       rating: 7.20,
       honors: ['1995 Spiel des Jahres Winner'],
@@ -143,11 +146,60 @@ export async function runSmokeTests(logger: (msg: string) => void): Promise<{ pa
       usedPrice: 180,
     };
 
+    assert.equal(sampleGame.isPlayed, true);
     assert.ok(sampleGame.geekRating && sampleGame.geekRating > 0);
     assert.ok(Array.isArray(sampleGame.honors) && sampleGame.honors.length === 1);
     assert.ok(sampleGame.suggestedPlayers?.summary);
     assert.ok(sampleGame.descriptionPt);
     assert.ok(sampleGame.retailPrice && sampleGame.usedPrice);
+  });
+
+  // Smoke 5: Ludopedia isPlayed Parser
+  test('Ludopedia isPlayed Parser: Identifica status de jogo jogado por partidas > 0 e flags fl_jogou', () => {
+    // 1. Contador qt_partidas > 0
+    assert.equal(parseIsPlayedFromLudo({ qt_partidas: 3 }), true);
+    assert.equal(parseIsPlayedFromLudo({ qt_partidas: "10" }), true);
+    assert.equal(parseIsPlayedFromLudo({ qt_partidas: 0 }), false);
+
+    // 2. Flags de status fl_jogou
+    assert.equal(parseIsPlayedFromLudo({ fl_jogou: 1 }), true);
+    assert.equal(parseIsPlayedFromLudo({ fl_jogou: "1" }), true);
+    assert.equal(parseIsPlayedFromLudo({ fl_jogou: true }), true);
+    assert.equal(parseIsPlayedFromLudo({ fl_jogou: 0 }), false);
+
+    // 3. Flags fl_jogado e total_partidas
+    assert.equal(parseIsPlayedFromLudo({ fl_jogado: 1 }), true);
+    assert.equal(parseIsPlayedFromLudo({ total_partidas: 5 }), true);
+    assert.equal(parseIsPlayedFromLudo({ partidas: [1, 2] }), true);
+
+    // 4. Jogo sem partidas registradas
+    assert.equal(parseIsPlayedFromLudo({ id_jogo: 100 }), false);
+    assert.equal(parseIsPlayedFromLudo({}, { qt_partidas: 2 }), true);
+
+    // 5. Lista de jogados oficial da Ludopedia (/colecao?lista=jogados)
+    assert.equal(parseIsPlayedFromLudo({ id_jogo: 129759, _source_lista: 'jogados' }), true);
+    assert.equal(parseIsPlayedFromLudo({ id_jogo: 129759, lista: 'jogados' }), true);
+
+    // 6. Objetos aninhados retornados pela API (item, colecao, usuario)
+    assert.equal(parseIsPlayedFromLudo({ colecao: { fl_jogou: 1 } }), true);
+    assert.equal(parseIsPlayedFromLudo({ item: { qt_partidas: 4 } }), true);
+  });
+
+  // Smoke 6: Resolução e Correspondência Tolerante de Nomes (Caso Arnak)
+  test('Nome Matcher: Resolve correspondências entre nomes nacionais, internacionais e abreviados (ex: Arnak)', () => {
+    // Caso de uso relatado pelo usuário: "Arnak" vs "As Ruínas Perdidas de Arnak" vs "Lost Ruins of Arnak"
+    assert.equal(matchesGameName('Arnak', 'As Ruínas Perdidas de Arnak'), true);
+    assert.equal(matchesGameName('Arnak', 'Lost Ruins of Arnak'), true);
+    assert.equal(matchesGameName('As Ruínas Perdidas de Arnak', 'Lost Ruins of Arnak'), true);
+    assert.equal(matchesGameName('As Ruínas Perdidas de Arnak', 'Arnak'), true);
+
+    // Proteção de segurança: Não confundir Jogo Base com Expansão
+    assert.equal(matchesGameName('Arnak', 'As Ruínas Perdidas de Arnak: Líderes da Expedição (Expansão)'), false);
+    assert.equal(matchesGameName('Catan', 'Catan: Navegadores (Expansão)'), false);
+
+    // Outros jogos com variações de títulos
+    assert.equal(matchesGameName('Catan', 'The Settlers of Catan'), true);
+    assert.equal(matchesGameName('Terra Mystica', 'Terra Mystica: Edição Brasileira'), true);
   });
 
   return { passed, failed };

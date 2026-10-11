@@ -7,6 +7,7 @@ export interface GameData {
   type: string; // 'tipo' - ex: 'Base', 'Expansão', 'Acessório'
   value: number | string; // 'valor mercado' - valor atual de mercado
   soldValue?: number | string; // valor de venda
+  isPlayed?: boolean; // Rastreamento de partidas (Status: Jogado / Não Jogado)
   
   // Dados extras do BGG & Ludopedia & Compara Jogos
   thumbnail?: string;

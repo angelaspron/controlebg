@@ -110,6 +110,24 @@ export function GameDetailsModal({ game, isOpen, onClose, onEdit, onRefresh, isU
                     <Calendar size={14} /> {game.yearPublished}
                   </span>
                 )}
+                {game.isPlayed !== undefined && (
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      padding: '2px 8px',
+                      borderRadius: '8px',
+                      fontSize: '0.78rem',
+                      fontWeight: 600,
+                      background: game.isPlayed ? 'rgba(16, 185, 129, 0.2)' : 'rgba(148, 163, 184, 0.15)',
+                      color: game.isPlayed ? '#34d399' : '#94a3b8',
+                      border: `1px solid ${game.isPlayed ? 'rgba(16, 185, 129, 0.4)' : 'rgba(148, 163, 184, 0.3)'}`
+                    }}
+                  >
+                    {game.isPlayed ? '✔ Jogado' : 'Não Jogado'}
+                  </span>
+                )}
               </div>
             </div>
 

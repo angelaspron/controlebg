@@ -211,6 +211,25 @@ export const GameCard = memo(function GameCard({
         <div className="game-meta">
           <span className={typeClass}>{game.type || 'Base'}</span>
           {game.yearPublished && <span>({game.yearPublished})</span>}
+          {game.isPlayed !== undefined && (
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '3px',
+                padding: '1px 6px',
+                borderRadius: '6px',
+                fontSize: '0.72rem',
+                fontWeight: 600,
+                background: game.isPlayed ? 'rgba(16, 185, 129, 0.18)' : 'rgba(148, 163, 184, 0.15)',
+                color: game.isPlayed ? '#34d399' : '#94a3b8',
+                border: `1px solid ${game.isPlayed ? 'rgba(16, 185, 129, 0.35)' : 'rgba(148, 163, 184, 0.25)'}`
+              }}
+              title={game.isPlayed ? 'Jogo registrado como Jogado' : 'Jogo registrado como Não Jogado'}
+            >
+              {game.isPlayed ? '✔ Jogado' : 'Não Jogado'}
+            </span>
+          )}
           {game.honors && game.honors.length > 0 && (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px', color: '#fbbf24', fontSize: '0.75rem' }} title={`${game.honors.length} Prêmios`}>
               <Award size={13} /> {game.honors.length}

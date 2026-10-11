@@ -8,8 +8,9 @@ import {
   type BatchProgress 
 } from '../services/batchProcessor';
 import { fetchBGGThingWithRetry, searchBGGId, DEFAULT_BGG_TOKEN } from '../services/bggService';
-import { fetchLudopediaData } from '../services/ludopediaService';
+import { fetchLudopediaData, parseIsPlayedFromLudo } from '../services/ludopediaService';
 import { fetchComparaJogosData } from '../services/comparaService';
+import { matchesGameName, normalizeGameName } from '../utils/nameMatcher';
 
 const STORAGE_KEY = 'boardgame_manager_data';
 const MAPPING_STORAGE_KEY = 'boardgame_manager_mapping';
@@ -164,6 +165,19 @@ export function useCollection() {
               detectedType = 'Acessório';
             }
 
+            const rawPlayed = getVal(row, ['jogado', 'jogados', 'jogou', 'isplayed', 'is_played', 'played', 'partidas']);
+            let detectedIsPlayed: boolean | undefined = undefined;
+            if (rawPlayed !== undefined && rawPlayed !== null && rawPlayed !== '') {
+              const normP = String(rawPlayed).toLowerCase().trim();
+              if (normP === 'sim' || normP === 'true' || normP === '1' || normP === 's' || normP === 'yes' || normP === 'y') {
+                detectedIsPlayed = true;
+              } else if (normP === 'não' || normP === 'nao' || normP === 'false' || normP === '0' || normP === 'n' || normP === 'no') {
+                detectedIsPlayed = false;
+              } else if (!isNaN(Number(normP)) && Number(normP) > 0) {
+                detectedIsPlayed = true;
+              }
+            }
+
             return {
               id: `local-${index}-${Date.now()}`,
               name,
@@ -172,6 +186,7 @@ export function useCollection() {
               type: detectedType,
               value: toNumber(mappedValue !== undefined ? mappedValue : getVal(row, ['valor mercado', 'valor de mercado', 'mercado', 'market value', 'market'])),
               soldValue: toNumber(mappedSoldValue !== undefined ? mappedSoldValue : getVal(row, ['valor vendido', 'venda', 'sold'])),
+              isPlayed: detectedIsPlayed,
             };
           });
 
@@ -179,7 +194,10 @@ export function useCollection() {
             const newGames = [...prevGames];
 
             for (const parsedGame of parsedGames) {
-              const existingIndex = newGames.findIndex(g => g.name.toLowerCase() === parsedGame.name.toLowerCase());
+              const existingIndex = newGames.findIndex(g => 
+                g.name.toLowerCase() === parsedGame.name.toLowerCase() ||
+                matchesGameName(g.name, parsedGame.name)
+              );
               
               if (existingIndex !== -1) {
                 const existing = newGames[existingIndex];
@@ -190,6 +208,9 @@ export function useCollection() {
                   type: (parsedGame.type !== 'Base' && parsedGame.type) ? parsedGame.type : existing.type,
                   value: parsedGame.value ? parsedGame.value : existing.value,
                   soldValue: parsedGame.soldValue ? parsedGame.soldValue : existing.soldValue,
+                  isPlayed: (parsedGame.isPlayed !== undefined || existing.isPlayed !== undefined)
+                    ? Boolean(parsedGame.isPlayed || existing.isPlayed)
+                    : undefined,
                 };
               } else {
                 newGames.push(parsedGame);
@@ -386,6 +407,9 @@ export function useCollection() {
                 rank: ludoData.rank || g.rank,
                 domains: ludoData.domains || g.domains,
                 descriptionPt: ludoData.descriptionPt || g.descriptionPt,
+                isPlayed: (g.isPlayed !== undefined || ludoData.isPlayed !== undefined)
+                  ? Boolean(g.isPlayed || ludoData.isPlayed)
+                  : undefined,
               };
             }));
           }
@@ -502,7 +526,7 @@ export function useCollection() {
       setIsLoading(true);
       let allItems: any[] = [];
 
-      const listasParaBuscar = ['colecao', 'teve'];
+      const listasParaBuscar = ['colecao', 'jogados', 'teve'];
 
       for (const lista of listasParaBuscar) {
         let currentPage = 1;
@@ -527,6 +551,13 @@ export function useCollection() {
           
           if (json.colecao) {
             const items = Array.isArray(json.colecao) ? json.colecao : [json.colecao];
+            items.forEach((it: any) => {
+              it._source_lista = lista;
+              if (lista === 'jogados') {
+                it.fl_jogou = 1;
+                it.isPlayed = true;
+              }
+            });
             allItems = [...allItems, ...items];
             if (currentPage * 100 >= json.total) {
               hasMore = false;
@@ -539,11 +570,45 @@ export function useCollection() {
           }
         }
       }
+
+      // Buscar histórico agrupado de partidas para identificar todos os jogos que o usuário jogou
+      const playedGameIds = new Set<string>();
+      const playedGameNames = new Set<string>();
+      try {
+        const partRes = await fetch('/ludo-api/partidas/group?groupby=jogos&rows=100', {
+          headers: { 'Authorization': `Bearer ${ludoToken}` }
+        });
+        if (partRes.ok) {
+          const partJson = await partRes.json();
+          const groupItems = Array.isArray(partJson.jogos) ? partJson.jogos : (Array.isArray(partJson) ? partJson : []);
+          for (const pj of groupItems) {
+            if (pj.id_jogo) playedGameIds.add(String(pj.id_jogo));
+            if (pj.jogo?.id_jogo) playedGameIds.add(String(pj.jogo.id_jogo));
+            if (pj.nm_jogo) playedGameNames.add(normalizeGameName(pj.nm_jogo));
+            if (pj.jogo?.nm_jogo) playedGameNames.add(normalizeGameName(pj.jogo.nm_jogo));
+          }
+        }
+      } catch {
+        // Ignora se o endpoint não estiver disponível ou usuário não tiver partidas registradas
+      }
       
-      if (allItems.length > 0) {
+      if (allItems.length > 0 || playedGameIds.size > 0) {
         const uniqueItemsMap = new Map();
         for (const item of allItems) {
-          uniqueItemsMap.set(item.id_jogo, item);
+          const idKey = String(item.id_jogo);
+          const existing = uniqueItemsMap.get(idKey);
+          if (existing) {
+            uniqueItemsMap.set(idKey, {
+              ...existing,
+              ...item,
+              fl_tem: (existing.fl_tem || item.fl_tem),
+              fl_jogou: (existing.fl_jogou || item.fl_jogou || item._source_lista === 'jogados' || existing._source_lista === 'jogados') ? 1 : 0,
+              qt_partidas: Math.max(Number(existing.qt_partidas || 0), Number(item.qt_partidas || 0)),
+              isPlayed: Boolean(existing.isPlayed || item.isPlayed || item._source_lista === 'jogados' || existing._source_lista === 'jogados'),
+            });
+          } else {
+            uniqueItemsMap.set(idKey, item);
+          }
         }
         const uniqueItems = Array.from(uniqueItemsMap.values());
 
@@ -562,6 +627,15 @@ export function useCollection() {
             inferredType = item.tipo_jogo;
           }
 
+          const isPlayedInLudo = Boolean(
+            parseIsPlayedFromLudo(item) ||
+            item.fl_jogou === 1 ||
+            item.isPlayed === true ||
+            item._source_lista === 'jogados' ||
+            playedGameIds.has(String(item.id_jogo)) ||
+            playedGameNames.has(normalizeGameName(item.nm_jogo))
+          );
+
           return {
             id: `ludo-${item.id_jogo}-${Date.now()}-${idx}`,
             ludoId: String(item.id_jogo),
@@ -573,6 +647,7 @@ export function useCollection() {
             yearPublished: item.ano_publicacao ? parseInt(item.ano_publicacao, 10) : undefined,
             thumbnail: item.thumb,
             ludoRating: item.vl_nota ? parseFloat(item.vl_nota) : undefined,
+            isPlayed: isPlayedInLudo,
           };
         });
 
@@ -580,7 +655,11 @@ export function useCollection() {
           const newPrev = [...prev];
           
           for (const ng of newGames) {
-            const existingIndex = newPrev.findIndex(g => g.name.toLowerCase() === ng.name.toLowerCase() || g.ludoId === ng.ludoId);
+            const existingIndex = newPrev.findIndex(g => 
+              (g.ludoId && ng.ludoId && g.ludoId === ng.ludoId) ||
+              g.name.toLowerCase() === ng.name.toLowerCase() ||
+              matchesGameName(g.name, ng.name)
+            );
             
             if (existingIndex !== -1) {
               newPrev[existingIndex] = {
@@ -592,9 +671,26 @@ export function useCollection() {
                 spend: newPrev[existingIndex].spend === 0 ? ng.spend : newPrev[existingIndex].spend,
                 yearPublished: newPrev[existingIndex].yearPublished || ng.yearPublished,
                 type: ng.type || newPrev[existingIndex].type,
+                isPlayed: Boolean(newPrev[existingIndex].isPlayed || ng.isPlayed),
               };
             } else {
               newPrev.push(ng);
+            }
+          }
+
+          // Se houver jogos em partidas da Ludopedia que já existem localmente, garantir isPlayed = true
+          if (playedGameIds.size > 0 || playedGameNames.size > 0) {
+            for (let i = 0; i < newPrev.length; i++) {
+              const g = newPrev[i];
+              if (!g.isPlayed) {
+                if (
+                  (g.ludoId && playedGameIds.has(g.ludoId)) ||
+                  playedGameNames.has(normalizeGameName(g.name)) ||
+                  Array.from(playedGameNames).some(pn => matchesGameName(g.name, pn))
+                ) {
+                  newPrev[i] = { ...g, isPlayed: true };
+                }
+              }
             }
           }
           
@@ -677,6 +773,10 @@ export function useCollection() {
             ? parseFloat(item.stats.rating.bayesaverage['@_value'])
             : undefined;
 
+          const rawNumPlays = item.numplays ?? item['@_numplays'] ?? item.stats?.['@_numplays'];
+          const numPlays = rawNumPlays !== undefined ? parseInt(String(rawNumPlays), 10) : 0;
+          const isPlayedFromBgg = !isNaN(numPlays) && numPlays > 0;
+
           return {
             id: `bgg-${item['@_objectid']}-${Date.now()}-${idx}`,
             bggId: item['@_objectid'],
@@ -692,7 +792,8 @@ export function useCollection() {
             maxPlayers: item.stats?.['@_maxplayers'] ? parseInt(item.stats['@_maxplayers'], 10) : undefined,
             rating: item.stats?.rating?.average?.['@_value'] ? parseFloat(item.stats.rating.average['@_value']) : undefined,
             geekRating: bayesRating,
-            rank: !isNaN(bggRank as number) ? bggRank : undefined
+            rank: !isNaN(bggRank as number) ? bggRank : undefined,
+            isPlayed: isPlayedFromBgg ? true : undefined,
           };
         });
 
@@ -701,7 +802,11 @@ export function useCollection() {
           const toAdd: GameData[] = [];
 
           for (const ng of newGames) {
-            const existingIndex = newPrev.findIndex(g => (g.bggId && g.bggId === ng.bggId) || g.name.toLowerCase() === ng.name.toLowerCase());
+            const existingIndex = newPrev.findIndex(g => 
+              (g.bggId && g.bggId === ng.bggId) || 
+              g.name.toLowerCase() === ng.name.toLowerCase() ||
+              matchesGameName(g.name, ng.name)
+            );
             
             if (existingIndex !== -1) {
               newPrev[existingIndex] = {
@@ -717,6 +822,9 @@ export function useCollection() {
                 geekRating: newPrev[existingIndex].geekRating || ng.geekRating,
                 rank: newPrev[existingIndex].rank || ng.rank,
                 type: (newPrev[existingIndex].type === 'Base' || newPrev[existingIndex].type === 'Desconhecido') && ng.type !== 'Base' ? ng.type : newPrev[existingIndex].type,
+                isPlayed: (newPrev[existingIndex].isPlayed !== undefined || ng.isPlayed !== undefined)
+                  ? Boolean(newPrev[existingIndex].isPlayed || ng.isPlayed)
+                  : undefined,
               };
             } else {
               toAdd.push(ng);

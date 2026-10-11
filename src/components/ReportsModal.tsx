@@ -109,6 +109,35 @@ export function ReportsModal({ isOpen, onClose, games }: ReportsModalProps) {
     return sorted.slice(0, 10);
   }, [games]);
 
+  // 6. Rastreamento de Partidas (Base vs Expansões x Jogado vs Não Jogado)
+  const playedCrossData = useMemo(() => {
+    let basePlayed = 0;
+    let baseUnplayed = 0;
+    let expPlayed = 0;
+    let expUnplayed = 0;
+
+    games.forEach(g => {
+      const typeLower = String(g.type || '').toLowerCase();
+      const isExp = typeLower.includes('expans') || typeLower.includes('expansion');
+      const isPlayed = Boolean(g.isPlayed);
+
+      if (isExp) {
+        if (isPlayed) expPlayed++;
+        else expUnplayed++;
+      } else {
+        if (isPlayed) basePlayed++;
+        else baseUnplayed++;
+      }
+    });
+
+    return [
+      { name: 'Base Jogados', value: basePlayed, color: '#10b981' },
+      { name: 'Base Não Jogados', value: baseUnplayed, color: '#38bdf8' },
+      { name: 'Expansões Jogadas', value: expPlayed, color: '#8b5cf6' },
+      { name: 'Expansões Não Jogadas', value: expUnplayed, color: '#f43f5e' },
+    ];
+  }, [games]);
+
   if (!isOpen) return null;
 
   return (
@@ -129,6 +158,21 @@ export function ReportsModal({ isOpen, onClose, games }: ReportsModalProps) {
         
         <div style={{ flex: 1, overflowY: 'auto', paddingRight: '0.5rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '2rem' }}>
           
+          {/* Rastreamento de Partidas: Base vs Expansões x Jogado vs Não Jogado */}
+          <div className="glass-panel" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', background: 'rgba(255,255,255,0.02)' }}>
+            <h3 style={{ fontSize: '1.2rem', marginBottom: '1rem', color: 'var(--text-muted)' }}>Partidas: Base vs Expansão (Jogados x Não Jogados)</h3>
+            <div style={{ width: '100%', height: 300 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={playedCrossData.filter(d => d.value > 0)} cx="50%" cy="50%" innerRadius={50} outerRadius={100} labelLine={false} label={({ name, percent }: { name?: string; percent?: number }) => `${name || ''} (${((percent || 0) * 100).toFixed(0)}%)`} dataKey="value">
+                    {playedCrossData.map((entry, index) => <Cell key={`cross-cell-${index}`} fill={entry.color} />)}
+                  </Pie>
+                  <Tooltip contentStyle={{ backgroundColor: 'rgba(15,23,42,0.9)', borderColor: 'rgba(255,255,255,0.1)', color: '#fff' }} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
           {/* Tipo de Jogo */}
           <div className="glass-panel" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', background: 'rgba(255,255,255,0.02)' }}>
             <h3 style={{ fontSize: '1.2rem', marginBottom: '1rem', color: 'var(--text-muted)' }}>Proporção: Base vs Expansões</h3>

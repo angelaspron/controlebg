@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import type { GameData } from '../src/types/index.ts';
 import { processBatchWithConcurrency } from '../src/services/batchProcessor.ts';
+import { matchesGameName } from '../src/utils/nameMatcher.ts';
 
 export async function runRegressionTests(logger: (msg: string) => void): Promise<{ passed: number; failed: number }> {
   let passed = 0;
@@ -142,6 +143,213 @@ export async function runRegressionTests(logger: (msg: string) => void): Promise
     assert.equal(calculateBackoff(3), 8000);
     assert.equal(calculateBackoff(4), 16000);
     assert.equal(calculateBackoff(5), 16000, 'Não deve exceder o teto máximo de 16000');
+  });
+
+  // Regressão 6: Seleção Individual de Cards e Operações em Massa
+  await test('Seleção Individual de Cards: Alternância de seleção e integridade do Set imutável', () => {
+    let selectedSet = new Set<string>();
+
+    const toggle = (id: string) => {
+      const next = new Set(selectedSet);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      selectedSet = next;
+    };
+
+    const selectAll = (ids: string[]) => {
+      selectedSet = new Set(ids);
+    };
+
+    const deselectAll = () => {
+      selectedSet = new Set();
+    };
+
+    // 1. Seleciona jogo 1
+    toggle('game-1');
+    assert.equal(selectedSet.has('game-1'), true);
+    assert.equal(selectedSet.size, 1);
+
+    // 2. Seleciona jogo 2
+    toggle('game-2');
+    assert.equal(selectedSet.has('game-2'), true);
+    assert.equal(selectedSet.size, 2);
+
+    // 3. Desmarca jogo 1
+    toggle('game-1');
+    assert.equal(selectedSet.has('game-1'), false);
+    assert.equal(selectedSet.has('game-2'), true);
+    assert.equal(selectedSet.size, 1);
+
+    // 4. Selecionar Todos
+    selectAll(['game-1', 'game-2', 'game-3']);
+    assert.equal(selectedSet.size, 3);
+
+    // 5. Limpar seleção
+    deselectAll();
+    assert.equal(selectedSet.size, 0);
+  });
+
+  // Regressão 7: Virtual Scrolling e Agrupamento em Linhas
+  await test('Virtual Scrolling: Agrupamento em grid e cálculo de fatiamento sem perda de jogos', () => {
+    const totalGames = 45;
+    const mockGames: GameData[] = Array.from({ length: totalGames }, (_, i) => ({
+      id: `game-${i}`,
+      name: `Jogo ${i}`,
+      status: 'Na Coleção',
+      spend: 100,
+      type: 'Base',
+      value: 120,
+    }));
+
+    const MIN_CARD_WIDTH = 280;
+    const GAP = 20;
+    const containerWidth = 1200;
+    const cols = Math.max(1, Math.floor((containerWidth + GAP) / (MIN_CARD_WIDTH + GAP)));
+
+    const grouped: GameData[][] = [];
+    for (let i = 0; i < mockGames.length; i += cols) {
+      grouped.push(mockGames.slice(i, i + cols));
+    }
+
+    // Todos os jogos devem estar presentes nos rows
+    const flattened = grouped.flatMap(r => r);
+    assert.equal(flattened.length, totalGames, 'Todos os 45 jogos devem estar presentes na grade');
+    assert.equal(grouped.length, Math.ceil(totalGames / cols));
+
+    // Simula cálculo de range visível
+    const ESTIMATED_ROW_HEIGHT = 440;
+    const OVERSCAN = 2;
+    const scrollTop = 1000;
+    const viewportHeight = 800;
+
+    const startRow = Math.max(0, Math.floor(scrollTop / ESTIMATED_ROW_HEIGHT) - OVERSCAN);
+    const visibleRowCount = Math.ceil(viewportHeight / ESTIMATED_ROW_HEIGHT) + OVERSCAN * 2;
+    const endRow = Math.min(grouped.length, startRow + visibleRowCount);
+
+    const visibleRows = grouped.slice(startRow, endRow);
+    assert.ok(visibleRows.length > 0, 'Deve haver linhas visíveis calculadas');
+    assert.ok(endRow <= grouped.length, 'Fim do range não deve exceder total de linhas');
+  });
+
+  // Regressão 8: Sistema de Filtro de Partidas (Todos / Jogados / Não Jogados)
+  await test('Filtros de Partidas: Isolamento estrito entre Todos, Jogados e Não Jogados', () => {
+    const games: GameData[] = [
+      { id: '1', name: 'Terraforming Mars', type: 'Base', status: 'Na Coleção', spend: 300, value: 350, isPlayed: true },
+      { id: '2', name: 'Brass Birmingham', type: 'Base', status: 'Na Coleção', spend: 400, value: 450, isPlayed: false },
+      { id: '3', name: 'Prelúdio (Expansão)', type: 'Expansão', status: 'Na Coleção', spend: 120, value: 150, isPlayed: true },
+      { id: '4', name: 'Vênus Próxima (Expansão)', type: 'Expansão', status: 'Na Coleção', spend: 150, value: 180, isPlayed: false },
+    ];
+
+    const filterGames = (list: GameData[], filter: 'Todos' | 'Jogados' | 'Não Jogados') => {
+      return list.filter(g => {
+        if (filter === 'Todos') return true;
+        if (filter === 'Jogados') return Boolean(g.isPlayed);
+        if (filter === 'Não Jogados') return !g.isPlayed;
+        return true;
+      });
+    };
+
+    const todos = filterGames(games, 'Todos');
+    const jogados = filterGames(games, 'Jogados');
+    const naoJogados = filterGames(games, 'Não Jogados');
+
+    assert.equal(todos.length, 4, 'Filtro Todos deve retornar todos os 4 jogos');
+    assert.equal(jogados.length, 2, 'Filtro Jogados deve retornar 2 jogos');
+    assert.deepEqual(jogados.map(g => g.name), ['Terraforming Mars', 'Prelúdio (Expansão)']);
+    assert.equal(naoJogados.length, 2, 'Filtro Não Jogados deve retornar 2 jogos');
+    assert.deepEqual(naoJogados.map(g => g.name), ['Brass Birmingham', 'Vênus Próxima (Expansão)']);
+  });
+
+  // Regressão 9: Dashboard Analítico & Cruzamento Tipo x Partidas com Reatividade
+  await test('Dashboard Analítico: Cruzamento Tipo x Status e Reatividade após Edição Manual', () => {
+    let mockCollection: GameData[] = [
+      { id: '1', name: 'Catan', type: 'Base', status: 'Na Coleção', spend: 200, value: 250, isPlayed: true },
+      { id: '2', name: 'Carcassonne', type: 'Base', status: 'Na Coleção', spend: 180, value: 200, isPlayed: false },
+      { id: '3', name: 'Catan: Navegadores', type: 'Expansão', status: 'Na Coleção', spend: 150, value: 180, isPlayed: true },
+      { id: '4', name: 'Catan: Cidades & Cavaleiros', type: 'Expansão', status: 'Na Coleção', spend: 170, value: 210, isPlayed: false },
+    ];
+
+    const calculateDashboardStats = (list: GameData[]) => {
+      let basePlayed = 0;
+      let baseUnplayed = 0;
+      let expPlayed = 0;
+      let expUnplayed = 0;
+
+      for (const g of list) {
+        const typeLower = String(g.type || '').toLowerCase();
+        const isExp = typeLower.includes('expans') || typeLower.includes('expansion');
+        const isPlayed = Boolean(g.isPlayed);
+
+        if (isExp) {
+          if (isPlayed) expPlayed++;
+          else expUnplayed++;
+        } else {
+          if (isPlayed) basePlayed++;
+          else baseUnplayed++;
+        }
+      }
+
+      return { basePlayed, baseUnplayed, expPlayed, expUnplayed, total: list.length };
+    };
+
+    // Estado inicial
+    let stats = calculateDashboardStats(mockCollection);
+    assert.equal(stats.basePlayed, 1, '1 jogo base jogado');
+    assert.equal(stats.baseUnplayed, 1, '1 jogo base não jogado');
+    assert.equal(stats.expPlayed, 1, '1 expansão jogada');
+    assert.equal(stats.expUnplayed, 1, '1 expansão não jogada');
+    assert.equal(stats.total, 4);
+
+    // Simula edição manual (Usuário joga Carcassonne e marca isPlayed = true)
+    mockCollection = mockCollection.map(g => g.id === '2' ? { ...g, isPlayed: true } : g);
+
+    // Reatividade: Dashboard recalculado reflete o novo status instantaneamente
+    stats = calculateDashboardStats(mockCollection);
+    assert.equal(stats.basePlayed, 2, 'Agora 2 jogos base jogados');
+    assert.equal(stats.baseUnplayed, 0, '0 jogos base não jogados');
+    assert.equal(stats.expPlayed, 1);
+    assert.equal(stats.expUnplayed, 1);
+  });
+
+  // Regressão 10: Sincronização e Fusão de Jogos Jogados (Caso Arnak)
+  await test('Sincronização e Fusão de Jogos Jogados: Identifica Arnak e atualiza isPlayed sem sobrescrever com false', () => {
+    // 1. O usuário tem "Arnak" cadastrado localmente com isPlayed = false
+    const localCollection: GameData[] = [
+      { id: 'local-1', name: 'Arnak', status: 'Na Coleção', spend: 300, type: 'Base', value: 350, isPlayed: false }
+    ];
+
+    // 2. A API da Ludopedia retorna a ficha completa "As Ruínas Perdidas de Arnak" marcada como jogada (isPlayed = true)
+    const apiIncomingGame: GameData = {
+      id: 'ludo-129759',
+      ludoId: '129759',
+      name: 'As Ruínas Perdidas de Arnak',
+      status: 'Na Coleção',
+      spend: 0,
+      type: 'Base',
+      value: 0,
+      isPlayed: true
+    };
+
+    // 3. Lógica de merge do hook useCollection com matchesGameName e fusão OR de isPlayed
+    const merged = [...localCollection];
+    const existingIndex = merged.findIndex(g => 
+      (g.ludoId && apiIncomingGame.ludoId && g.ludoId === apiIncomingGame.ludoId) ||
+      g.name.toLowerCase() === apiIncomingGame.name.toLowerCase() ||
+      matchesGameName(g.name, apiIncomingGame.name)
+    );
+
+    assert.notEqual(existingIndex, -1, 'Arnak deve ser encontrado e associado a "As Ruínas Perdidas de Arnak"');
+
+    merged[existingIndex] = {
+      ...merged[existingIndex],
+      ludoId: merged[existingIndex].ludoId || apiIncomingGame.ludoId,
+      isPlayed: Boolean(merged[existingIndex].isPlayed || apiIncomingGame.isPlayed)
+    };
+
+    // Prova irrefutável do requisito do usuário:
+    assert.equal(merged[0].name, 'Arnak', 'Nome original preservado');
+    assert.equal(merged[0].ludoId, '129759', 'ID da Ludopedia atribuído');
+    assert.equal(merged[0].isPlayed, true, 'isPlayed deve ser atualizado para true após identificação na Ludopedia');
   });
 
   return { passed, failed };

@@ -1,3 +1,5 @@
+import { matchesGameName } from '../utils/nameMatcher.ts';
+
 export interface LudopediaParsedData {
   ludoId: string;
   namePt?: string; // Nome de lançamento no Brasil
@@ -13,6 +15,75 @@ export interface LudopediaParsedData {
   rank?: number;
   domains?: string[];
   bggId?: string;
+  isPlayed?: boolean;
+}
+
+export function parseIsPlayedFromLudo(data: any, shallowData: any = {}): boolean {
+  const check = (obj: any): boolean | null => {
+    if (!obj || typeof obj !== 'object') return null;
+    if (typeof obj.isPlayed === 'boolean') return obj.isPlayed;
+
+    // Se proveniente da lista de jogados da Ludopedia (/colecao?lista=jogados)
+    if (obj._source_lista === 'jogados' || obj.lista === 'jogados') return true;
+
+    // Flags de status de jogo jogado na Ludopedia
+    if (
+      obj.fl_jogou === 1 || obj.fl_jogou === '1' || obj.fl_jogou === true ||
+      obj.fl_jogou === 'S' || obj.fl_jogou === 's'
+    ) return true;
+
+    if (
+      obj.fl_jogado === 1 || obj.fl_jogado === '1' || obj.fl_jogado === true ||
+      obj.fl_jogado === 'S' || obj.fl_jogado === 's'
+    ) return true;
+
+    if (obj.jogou === 1 || obj.jogou === '1' || obj.jogou === true) return true;
+    if (obj.jogado === 1 || obj.jogado === '1' || obj.jogado === true) return true;
+
+    // Contador de partidas > 0
+    if (obj.qt_partidas !== undefined && obj.qt_partidas !== null && Number(obj.qt_partidas) > 0) return true;
+    if (obj.total_partidas !== undefined && obj.total_partidas !== null && Number(obj.total_partidas) > 0) return true;
+    if (obj.num_partidas !== undefined && obj.num_partidas !== null && Number(obj.num_partidas) > 0) return true;
+    if (obj.qtde_partidas !== undefined && obj.qtde_partidas !== null && Number(obj.qtde_partidas) > 0) return true;
+
+    if (obj.partidas !== undefined && obj.partidas !== null) {
+      if (typeof obj.partidas === 'number' && obj.partidas > 0) return true;
+      if (Array.isArray(obj.partidas) && obj.partidas.length > 0) return true;
+      if (typeof obj.partidas === 'string' && Number(obj.partidas) > 0) return true;
+    }
+
+    // Objetos aninhados retornados pela API da Ludopedia (ex: colecao, item, usuario)
+    if (obj.colecao && typeof obj.colecao === 'object') {
+      const nested = check(obj.colecao);
+      if (nested !== null) return nested;
+    }
+    if (obj.item && typeof obj.item === 'object') {
+      const nested = check(obj.item);
+      if (nested !== null) return nested;
+    }
+    if (obj.usuario && typeof obj.usuario === 'object') {
+      const nested = check(obj.usuario);
+      if (nested !== null) return nested;
+    }
+
+    // Se explicitly zero
+    if (
+      obj.fl_jogou === 0 || obj.fl_jogou === '0' || obj.fl_jogou === false ||
+      obj.fl_jogou === 'N' || obj.fl_jogou === 'n'
+    ) return false;
+    if (obj.qt_partidas !== undefined && Number(obj.qt_partidas) === 0) return false;
+    if (obj.total_partidas !== undefined && Number(obj.total_partidas) === 0) return false;
+
+    return null;
+  };
+
+  const primary = check(data);
+  if (primary !== null) return primary;
+
+  const shallow = check(shallowData);
+  if (shallow !== null) return shallow;
+
+  return false;
 }
 
 export function parseLudopediaDetail(data: any, shallowData: any = {}): LudopediaParsedData {
@@ -168,6 +239,7 @@ export function parseLudopediaDetail(data: any, shallowData: any = {}): Ludopedi
     rank: isNaN(rank as number) ? undefined : rank,
     domains: domainsOut.length > 0 ? domainsOut : undefined,
     bggId: inferredBggId,
+    isPlayed: parseIsPlayedFromLudo(data, shallowData),
   };
 }
 
@@ -216,6 +288,11 @@ export async function fetchLudopediaData(
       if (searchJson.jogos && searchJson.jogos.length > 0) {
         searchItem = searchJson.jogos.find((j: any) => 
           (j.nm_jogo || '').toLowerCase() === gameName.toLowerCase()
+        ) || searchJson.jogos.find((j: any) =>
+          matchesGameName(gameName, j.nm_jogo || '')
+        ) || searchJson.jogos.find((j: any) =>
+          (j.nm_jogo || '').toLowerCase().includes(gameName.toLowerCase()) ||
+          gameName.toLowerCase().includes((j.nm_jogo || '').toLowerCase())
         ) || searchJson.jogos[0];
         resolvedLudoId = String(searchItem.id_jogo);
       }
@@ -233,9 +310,39 @@ export async function fetchLudopediaData(
 
     const detailJson = await detailRes.json();
     
-    // Passamos o shallow data (searchItem) como parâmetro separado em vez de fazer um objeto merged raso { ...searchItem, ...detailJson }
-    // Isso garante que flags de expansão do payload listagem não sejam sobrescritas por null no payload detalhado.
-    return parseLudopediaDetail(detailJson, searchItem || {});
+    // Consulta relação do usuário com o jogo na coleção (fl_jogou, qt_partidas)
+    let userItemData: any = null;
+    try {
+      const userItemRes = await fetchWithRetry(`/ludo-api/colecao/item/${resolvedLudoId}`);
+      if (userItemRes && userItemRes.ok) {
+        userItemData = await userItemRes.json();
+      }
+    } catch {
+      // Ignora erro se o usuário não possuir relação cadastrada para esse jogo
+    }
+
+    // Fallback adicional para verificar se há registros de partidas do usuário para este id_jogo
+    if (!userItemData?.fl_jogou && (!userItemData?.qt_partidas || userItemData.qt_partidas === 0)) {
+      try {
+        const partRes = await fetchWithRetry(`/ludo-api/partidas?id_jogo=${resolvedLudoId}&rows=1`);
+        if (partRes && partRes.ok) {
+          const partJson = await partRes.json();
+          const hasPartidas = (Array.isArray(partJson.partidas) && partJson.partidas.length > 0) || (partJson.total && Number(partJson.total) > 0);
+          if (hasPartidas) {
+            userItemData = { ...(userItemData || {}), fl_jogou: 1, qt_partidas: partJson.total || partJson.partidas.length };
+          }
+        }
+      } catch {
+        // Ignora falha de rede temporária
+      }
+    }
+
+    const mergedUserData = {
+      ...(searchItem || {}),
+      ...(userItemData || {})
+    };
+
+    return parseLudopediaDetail(detailJson, mergedUserData);
   } catch (error) {
     console.error(`Erro ao buscar dados na Ludopedia para "${gameName}":`, error);
     return null;

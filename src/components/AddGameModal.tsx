@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Search, Loader2, CheckCircle2 } from 'lucide-react';
+import { X, Search, Loader2, CheckCircle2, Dices } from 'lucide-react';
 import type { GameData } from '../types';
 import '../components.css';
 import { XMLParser } from 'fast-xml-parser';
@@ -19,6 +19,7 @@ export function AddGameModal({ isOpen, onClose, onAdd, ludoToken, bggToken }: Ad
   const [bggId, setBggId] = useState<string | undefined>(undefined);
   const [ludoId, setLudoId] = useState<string | undefined>(undefined);
   const [status, setStatus] = useState('Na Coleção');
+  const [isPlayed, setIsPlayed] = useState(false);
   const [spend, setSpend] = useState('');
   const [type, setType] = useState('Base');
   const [value, setValue] = useState('');
@@ -180,6 +181,7 @@ export function AddGameModal({ isOpen, onClose, onAdd, ludoToken, bggToken }: Ad
       bggId,
       ludoId,
       status: status.trim(),
+      isPlayed,
       spend: spend ? parseFloat(spend.replace(',', '.')) : 0,
       type: type.trim(),
       value: value ? parseFloat(value.replace(',', '.')) : 0,
@@ -207,6 +209,7 @@ export function AddGameModal({ isOpen, onClose, onAdd, ludoToken, bggToken }: Ad
     setBggId(undefined);
     setLudoId(undefined);
     setStatus('Na Coleção');
+    setIsPlayed(false);
     setSpend('');
     setType('Base');
     setValue('');
@@ -404,6 +407,63 @@ export function AddGameModal({ isOpen, onClose, onAdd, ludoToken, bggToken }: Ad
                 <option value="Acessório">Acessório</option>
               </select>
             </div>
+          </div>
+
+          {/* Campo de Status de Partidas (Jogado / Não Jogado) */}
+          <div 
+            style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'space-between',
+              padding: '0.85rem 1.1rem',
+              background: isPlayed ? 'rgba(16, 185, 129, 0.12)' : 'rgba(255, 255, 255, 0.04)',
+              border: `1px solid ${isPlayed ? 'rgba(16, 185, 129, 0.4)' : 'rgba(255, 255, 255, 0.1)'}`,
+              borderRadius: '10px',
+              transition: 'all 0.2s ease',
+              cursor: 'pointer'
+            }}
+            onClick={() => setIsPlayed(!isPlayed)}
+          >
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+              <span style={{ fontWeight: 600, fontSize: '0.95rem', color: isPlayed ? '#34d399' : '#f8fafc', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Dices size={18} color={isPlayed ? '#10b981' : 'var(--text-muted)'} />
+                Status de Partida: {isPlayed ? 'Jogado' : 'Não Jogado'}
+              </span>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                {isPlayed ? 'Este jogo já viu mesa e possui partidas jogadas.' : 'Marcado como nunca jogado / na fila.'}
+              </span>
+            </div>
+
+            <label 
+              style={{ position: 'relative', display: 'inline-block', width: '48px', height: '26px', cursor: 'pointer', margin: 0 }}
+              onClick={e => e.stopPropagation()}
+            >
+              <input
+                type="checkbox"
+                checked={isPlayed}
+                onChange={e => setIsPlayed(e.target.checked)}
+                style={{ opacity: 0, width: 0, height: 0 }}
+              />
+              <span style={{
+                position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                backgroundColor: isPlayed ? '#10b981' : 'rgba(255,255,255,0.2)',
+                transition: '0.3s',
+                borderRadius: '34px',
+                boxShadow: isPlayed ? '0 0 10px rgba(16, 185, 129, 0.4)' : 'none'
+              }}>
+                <span style={{
+                  position: 'absolute',
+                  content: '""',
+                  height: '20px',
+                  width: '20px',
+                  left: isPlayed ? '24px' : '3px',
+                  bottom: '3px',
+                  backgroundColor: 'white',
+                  transition: '0.3s',
+                  borderRadius: '50%'
+                }} />
+              </span>
+            </label>
           </div>
           
           <div style={{ display: 'flex', gap: '1rem' }}>
