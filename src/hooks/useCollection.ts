@@ -556,7 +556,10 @@ export function useCollection() {
             items.forEach((it: any) => {
               it._source_lista = lista;
             });
-            allItems = [...allItems, ...items];
+            // Filtro estrito: apenas itens que comprovadamente pertencem à coleção (ou foram vendidos no caso de 'teve')
+            // Jogos que apenas foram jogados mas não são possuídos são descartados da importação
+            const validItems = items.filter((it: any) => isOwnedInLudopedia(it));
+            allItems = [...allItems, ...validItems];
             if (currentPage * 100 >= json.total) {
               hasMore = false;
             } else {
@@ -687,7 +690,7 @@ export function useCollection() {
               // Diretriz 2: Bloqueio de Inserção Indevida
               // Se o jogo vier da API marcado como "jogado" mas não houver confirmação de que o usuário o possui,
               // o item deve ser ignorado e descartado do merge final, impedindo que ele apareça na lista de jogos do sistema.
-              const isConfirmedOwned = isOwnedInLudopedia(ng) || (ng as any)._isOwned === true;
+              const isConfirmedOwned = isOwnedInLudopedia(ng) && (ng.status === 'Na Coleção' || ng.status === 'Vendido');
               if (!isConfirmedOwned) {
                 // Descarta o item do merge final
                 continue;

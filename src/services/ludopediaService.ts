@@ -28,54 +28,68 @@ export function isOwnedInLudopedia(data: any, shallowData: any = {}): boolean {
   const check = (obj: any): boolean | null => {
     if (!obj || typeof obj !== 'object') return null;
 
-    // 1. Tags explícitas de posse / coleção
-    if (
+    // 1. Tags explícitas positivas de posse / coleção (documentadas pela API da Ludopedia)
+    const hasExplicitOwnership = Boolean(
       obj.is_owned === 1 || obj.is_owned === '1' || obj.is_owned === true ||
-      obj.is_owned === 'S' || obj.is_owned === 's' || obj.is_owned === 'sim'
-    ) return true;
-
-    if (
+      obj.is_owned === 'S' || obj.is_owned === 's' || obj.is_owned === 'sim' ||
       obj.na_colecao === 1 || obj.na_colecao === '1' || obj.na_colecao === true ||
-      obj.na_colecao === 'S' || obj.na_colecao === 's' || obj.na_colecao === 'sim'
-    ) return true;
-
-    if (
+      obj.na_colecao === 'S' || obj.na_colecao === 's' || obj.na_colecao === 'sim' ||
       obj.em_colecao === 1 || obj.em_colecao === '1' || obj.em_colecao === true ||
-      obj.em_colecao === 'S' || obj.em_colecao === 's' || obj.em_colecao === 'sim'
-    ) return true;
-
-    if (
+      obj.em_colecao === 'S' || obj.em_colecao === 's' || obj.em_colecao === 'sim' ||
       obj.fl_colecao === 1 || obj.fl_colecao === '1' || obj.fl_colecao === true ||
-      obj.fl_colecao === 'S' || obj.fl_colecao === 's' || obj.fl_colecao === 'sim'
-    ) return true;
-
-    if (
+      obj.fl_colecao === 'S' || obj.fl_colecao === 's' || obj.fl_colecao === 'sim' ||
       obj.fl_tem === 1 || obj.fl_tem === '1' || obj.fl_tem === true ||
-      obj.fl_tem === 'S' || obj.fl_tem === 's' || obj.fl_tem === 'sim'
-    ) return true;
-
-    if (
+      obj.fl_tem === 'S' || obj.fl_tem === 's' || obj.fl_tem === 'sim' ||
       obj.fl_teve === 1 || obj.fl_teve === '1' || obj.fl_teve === true ||
-      obj.fl_teve === 'S' || obj.fl_teve === 's' || obj.fl_teve === 'sim'
-    ) return true;
-
-    if (
+      obj.fl_teve === 'S' || obj.fl_teve === 's' || obj.fl_teve === 'sim' ||
       obj.owned === 1 || obj.owned === '1' || obj.owned === true ||
-      obj.owned === 'S' || obj.owned === 's'
-    ) return true;
+      obj.owned === 'S' || obj.owned === 's' ||
+      obj.isOwned === true || obj._isOwned === true
+    );
 
-    if (obj.isOwned === true || obj._isOwned === true) return true;
-
-    // 2. Se a origem for estritamente a lista de coleção pessoal ou teve
+    // 2. CRITÉRIOS DE BLOQUEIO E EXCLUSÃO (Prioridade Absoluta)
+    // Se explicitamente marcado como NÃO tem (fl_tem = 0) e não possui fl_teve=1, bloqueia sumariamente
     if (
-      obj._source_lista === 'colecao' || obj._source_lista === 'teve' ||
-      obj.lista === 'colecao' || obj.lista === 'teve'
+      obj.fl_tem === 0 || obj.fl_tem === '0' || obj.fl_tem === false ||
+      obj.fl_tem === 'N' || obj.fl_tem === 'n' || obj.fl_tem === 'nao' || obj.fl_tem === 'não'
     ) {
-      return true;
+      if (
+        obj.fl_teve !== 1 && obj.fl_teve !== '1' && obj.fl_teve !== true &&
+        obj.na_colecao !== 1 && obj.na_colecao !== true &&
+        obj.is_owned !== 1 && obj.is_owned !== true
+      ) {
+        return false;
+      }
     }
 
-    // 3. Status mapeado internamente no GameData
-    if (obj.status === 'Na Coleção' || obj.status === 'Vendido') {
+    // Origem explícita de lista de jogados (/colecao?lista=jogados)
+    if (obj._source_lista === 'jogados' || obj.lista === 'jogados') {
+      if (!hasExplicitOwnership) return false;
+    }
+
+    // Lista de desejos não é coleção
+    if (
+      (obj.fl_quer === 1 || obj.fl_quer === '1' || obj.fl_quer === true || obj._source_lista === 'lista_desejos' || obj.lista === 'lista_desejos') &&
+      !hasExplicitOwnership
+    ) {
+      return false;
+    }
+
+    // REGRA DEFINITIVA: Registros que apenas possuem dados de partidas/jogados NÃO pertencem à coleção
+    const hasPlayedIndicators = Boolean(
+      obj.fl_jogou === 1 || obj.fl_jogou === '1' || obj.fl_jogou === true ||
+      obj.fl_jogado === 1 || obj.fl_jogado === '1' || obj.fl_jogado === true ||
+      (obj.qt_partidas !== undefined && Number(obj.qt_partidas) > 0) ||
+      (obj.total_partidas !== undefined && Number(obj.total_partidas) > 0) ||
+      (obj.num_partidas !== undefined && Number(obj.num_partidas) > 0) ||
+      (Array.isArray(obj.partidas) && obj.partidas.length > 0)
+    );
+    if (hasPlayedIndicators && !hasExplicitOwnership) {
+      return false;
+    }
+
+    // 3. Se comprovada posse explícita positiva, aceita
+    if (hasExplicitOwnership) {
       return true;
     }
 
@@ -93,22 +107,18 @@ export function isOwnedInLudopedia(data: any, shallowData: any = {}): boolean {
       if (nested !== null) return nested;
     }
 
-    // Explicitamente não pertencente
+    // 5. Origem estrita de estante pessoal apenas se não houver indicadores de jogado e fl_tem não for 0
     if (
-      obj.fl_tem === 0 || obj.fl_tem === '0' || obj.fl_tem === false ||
-      obj.fl_tem === 'N' || obj.fl_tem === 'n' || obj.fl_tem === 'nao' || obj.fl_tem === 'não'
+      (obj._source_lista === 'colecao' || obj._source_lista === 'teve' || obj.lista === 'colecao' || obj.lista === 'teve') &&
+      !hasPlayedIndicators &&
+      obj.fl_tem !== 0 && obj.fl_tem !== '0' && obj.fl_tem !== false
     ) {
-      if (
-        obj.fl_teve !== 1 && obj.fl_teve !== '1' && obj.fl_teve !== true &&
-        obj.na_colecao !== 1 && obj.na_colecao !== true &&
-        obj.is_owned !== 1 && obj.is_owned !== true
-      ) {
-        return false;
-      }
+      return true;
     }
 
-    if (obj._source_lista === 'jogados' || obj.lista === 'jogados') {
-      return false;
+    // 6. Status mapeado internamente no GameData (para dados já existentes na estante local)
+    if (obj.status === 'Na Coleção' || obj.status === 'Vendido') {
+      return true;
     }
 
     return null;
