@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { parseBGGThingXml } from '../src/services/bggService.ts';
-import { parseLudopediaDetail, parseIsPlayedFromLudo } from '../src/services/ludopediaService.ts';
+import { parseLudopediaDetail, parseIsPlayedFromLudo, isOwnedInLudopedia } from '../src/services/ludopediaService.ts';
 import { parseComparaPrices } from '../src/services/comparaService.ts';
 import { matchesGameName } from '../src/utils/nameMatcher.ts';
 import type { GameData } from '../src/types/index.ts';
@@ -200,6 +200,36 @@ export async function runSmokeTests(logger: (msg: string) => void): Promise<{ pa
     // Outros jogos com variações de títulos
     assert.equal(matchesGameName('Catan', 'The Settlers of Catan'), true);
     assert.equal(matchesGameName('Terra Mystica', 'Terra Mystica: Edição Brasileira'), true);
+  });
+
+  // Smoke 7: Validação Estrita de Coleção (Ownership Check da Ludopedia)
+  test('Ludopedia Ownership Check: Isola estritamente jogos da coleção e bloqueia jogos apenas jogados', () => {
+    // 1. Confirmação positiva com flags na_colecao, is_owned, fl_tem
+    assert.equal(isOwnedInLudopedia({ id_jogo: 101, fl_tem: 1 }), true, 'fl_tem = 1 indica posse');
+    assert.equal(isOwnedInLudopedia({ id_jogo: 102, fl_tem: '1' }), true, 'fl_tem = "1" em string indica posse');
+    assert.equal(isOwnedInLudopedia({ id_jogo: 103, fl_tem: true }), true, 'fl_tem = true booleano indica posse');
+    assert.equal(isOwnedInLudopedia({ id_jogo: 104, na_colecao: 1 }), true, 'na_colecao = 1 indica posse');
+    assert.equal(isOwnedInLudopedia({ id_jogo: 105, na_colecao: true }), true, 'na_colecao = true indica posse');
+    assert.equal(isOwnedInLudopedia({ id_jogo: 106, is_owned: 1 }), true, 'is_owned = 1 indica posse');
+    assert.equal(isOwnedInLudopedia({ id_jogo: 107, is_owned: true }), true, 'is_owned = true indica posse');
+    assert.equal(isOwnedInLudopedia({ id_jogo: 108, em_colecao: true }), true, 'em_colecao = true indica posse');
+    assert.equal(isOwnedInLudopedia({ id_jogo: 109, fl_colecao: 'S' }), true, 'fl_colecao = "S" indica posse');
+
+    // 2. Confirmação positiva para jogos vendidos (histórico da coleção)
+    assert.equal(isOwnedInLudopedia({ id_jogo: 110, fl_teve: 1 }), true, 'fl_teve = 1 indica histórico na coleção');
+    assert.equal(isOwnedInLudopedia({ id_jogo: 111, _source_lista: 'colecao' }), true, 'Origem lista colecao indica posse');
+    assert.equal(isOwnedInLudopedia({ id_jogo: 112, _source_lista: 'teve' }), true, 'Origem lista teve indica posse');
+
+    // 3. Estruturas aninhadas retornadas pela API da Ludopedia
+    assert.equal(isOwnedInLudopedia({ colecao: { fl_tem: 1 } }), true, 'Objeto colecao aninhado');
+    assert.equal(isOwnedInLudopedia({ item: { na_colecao: true } }), true, 'Objeto item aninhado');
+    assert.equal(isOwnedInLudopedia({ usuario: { is_owned: 1 } }), true, 'Objeto usuario aninhado');
+
+    // 4. BLOQUEIO: Jogos apenas jogados, partidas ou histórico NÃO devem ser confirmados como da coleção
+    assert.equal(isOwnedInLudopedia({ id_jogo: 900, fl_jogou: 1, qt_partidas: 5 }), false, 'Apenas partidas não confere posse');
+    assert.equal(isOwnedInLudopedia({ id_jogo: 901, _source_lista: 'jogados', fl_jogou: 1 }), false, 'Lista jogados sem fl_tem não é da coleção');
+    assert.equal(isOwnedInLudopedia({ id_jogo: 902, fl_tem: 0, fl_jogou: 1, qt_partidas: 10 }), false, 'fl_tem = 0 explícito não é posse');
+    assert.equal(isOwnedInLudopedia({ id_jogo: 903, partidas: 3 }), false, 'Contador de partidas isolado');
   });
 
   return { passed, failed };

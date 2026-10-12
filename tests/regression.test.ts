@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import type { GameData } from '../src/types/index.ts';
 import { processBatchWithConcurrency } from '../src/services/batchProcessor.ts';
-import { matchesGameName } from '../src/utils/nameMatcher.ts';
+import { matchesGameName, normalizeGameName } from '../src/utils/nameMatcher.ts';
+import { isOwnedInLudopedia, parseIsPlayedFromLudo } from '../src/services/ludopediaService.ts';
 
 export async function runRegressionTests(logger: (msg: string) => void): Promise<{ passed: number; failed: number }> {
   let passed = 0;
@@ -350,6 +351,146 @@ export async function runRegressionTests(logger: (msg: string) => void): Promise
     assert.equal(merged[0].name, 'Arnak', 'Nome original preservado');
     assert.equal(merged[0].ludoId, '129759', 'ID da Ludopedia atribuído');
     assert.equal(merged[0].isPlayed, true, 'isPlayed deve ser atualizado para true após identificação na Ludopedia');
+  });
+
+  // Regressão 11: Filtro Estrito de Coleção e Bloqueio de Inserção Indevida (Scope Leak Prevention)
+  await test('Filtro Estrito de Coleção: Bloqueia inserção de jogos apenas jogados e assegura importação dos itens da coleção', () => {
+    // 1. Coleção local inicial do usuário com 2 jogos
+    const initialCollection: GameData[] = [
+      { id: 'loc-1', name: 'Arnak', status: 'Na Coleção', spend: 300, type: 'Base', value: 350, isPlayed: false },
+      { id: 'loc-2', name: '7 Wonders', status: 'Na Coleção', spend: 200, type: 'Base', value: 250, isPlayed: true }
+    ];
+
+    // 2. Payload retornado pela API da Ludopedia contendo uma mistura de:
+    // - Jogos da coleção (possuídos) jogados e não jogados
+    // - Jogos com status vendido (teve)
+    // - Jogos APENAS JOGADOS (vazamento de escopo / partidas gerais) sem confirmação de posse
+    const rawLudopediaPayload = [
+      // Item A: Na coleção (fl_tem = 1) e jogado (fl_jogou = 1)
+      { id_jogo: 201, nm_jogo: 'Catan', fl_tem: 1, fl_jogou: 1, qt_partidas: 4, vl_custo: '220.00' },
+      // Item B: Na coleção (tag na_colecao = true) e não jogado
+      { id_jogo: 202, nm_jogo: 'Terraforming Mars', na_colecao: true, fl_jogou: 0, qt_partidas: 0, vl_custo: '350.00' },
+      // Item C: Vendido / Já teve (fl_teve = 1)
+      { id_jogo: 203, nm_jogo: 'Concordia', fl_teve: 1, fl_jogou: 1, qt_partidas: 2 },
+      // Item D: VAZAMENTO DE ESCOPO: O usuário apenas jogou em um evento/amigos (fl_tem = 0, fl_jogou = 1, lista = jogados)
+      // Este item NÃO É DA COLEÇÃO e deve ser TERMINANTEMENTE BLOQUEADO!
+      { id_jogo: 991, nm_jogo: 'Nemesis', fl_tem: 0, fl_jogou: 1, qt_partidas: 12, _source_lista: 'jogados' },
+      // Item E: VAZAMENTO DE ESCOPO: Jogo vindo de histórico geral de partidas, sem tag de posse
+      // Este item NÃO É DA COLEÇÃO e deve ser TERMINANTEMENTE BLOQUEADO!
+      { id_jogo: 992, nm_jogo: 'Brass: Birmingham', fl_jogou: 1, total_partidas: 5 },
+      // Item F: Jogo que já existe localmente ("As Ruínas Perdidas de Arnak") que foi jogado
+      { id_jogo: 129759, nm_jogo: 'As Ruínas Perdidas de Arnak', fl_tem: 1, fl_jogou: 1, qt_partidas: 3 }
+    ];
+
+    // Conjunto de partidas agrupadas (como coletado pelo endpoint /partidas/group)
+    const playedGameIds = new Set<string>(['201', '203', '991', '992', '129759']);
+    const playedGameNames = new Set<string>(['catan', 'concordia', 'nemesis', 'brass birmingham', 'as ruinas perdidas de arnak']);
+
+    // 3. Execução da lógica de mapeamento e merge com o Filtro Estrito e Bloqueio de Inserção
+    const newGames: GameData[] = rawLudopediaPayload.map((item: any, idx: number) => {
+      const isOwned = isOwnedInLudopedia(item);
+
+      // DIRETRIZ 1: Status isPlayed atualizado APENAS para os itens que pertencem à coleção
+      const isPlayedInLudo = isOwned && Boolean(
+        parseIsPlayedFromLudo(item) ||
+        item.fl_jogou === 1 ||
+        item.isPlayed === true ||
+        playedGameIds.has(String(item.id_jogo)) ||
+        playedGameNames.has(normalizeGameName(item.nm_jogo))
+      );
+
+      let mappedStatus = 'Desconhecido';
+      if (item.fl_tem) mappedStatus = 'Na Coleção';
+      else if (item.fl_teve) mappedStatus = 'Vendido';
+      else if (isOwned) mappedStatus = 'Na Coleção';
+
+      return {
+        id: `ludo-${item.id_jogo}-${idx}`,
+        ludoId: String(item.id_jogo),
+        name: item.nm_jogo,
+        status: mappedStatus,
+        spend: item.vl_custo ? parseFloat(item.vl_custo) : 0,
+        type: 'Base',
+        value: 0,
+        isPlayed: isPlayedInLudo,
+        _isOwned: isOwned,
+      } as GameData;
+    });
+
+    // 4. Lógica de salvamento e merge idêntica ao hook useCollection
+    const finalShelf = [...initialCollection];
+
+    for (const ng of newGames) {
+      const existingIndex = finalShelf.findIndex(g =>
+        (g.ludoId && ng.ludoId && g.ludoId === ng.ludoId) ||
+        g.name.toLowerCase() === ng.name.toLowerCase() ||
+        matchesGameName(g.name, ng.name)
+      );
+
+      if (existingIndex !== -1) {
+        // Atualiza item já existente na coleção
+        finalShelf[existingIndex] = {
+          ...finalShelf[existingIndex],
+          ludoId: finalShelf[existingIndex].ludoId || ng.ludoId,
+          isPlayed: Boolean(finalShelf[existingIndex].isPlayed || ng.isPlayed),
+        };
+      } else {
+        // DIRETRIZ 2: Condicional de Bloqueio de Inserção Indevida
+        // Se não houver confirmação de posse/coleção, o item é ignorado e descartado do merge final
+        const isConfirmedOwned = isOwnedInLudopedia(ng) || (ng as any)._isOwned === true;
+        if (!isConfirmedOwned) {
+          continue; // DESCARTA ITEM NÃO POSSUÍDO
+        }
+        finalShelf.push(ng);
+      }
+    }
+
+    // Atualização de isPlayed via histórico apenas para os jogos que já estão na estante
+    for (let i = 0; i < finalShelf.length; i++) {
+      const g = finalShelf[i];
+      if (!g.isPlayed && (
+        (g.ludoId && playedGameIds.has(g.ludoId)) ||
+        playedGameNames.has(normalizeGameName(g.name)) ||
+        Array.from(playedGameNames).some(pn => matchesGameName(g.name, pn))
+      )) {
+        finalShelf[i] = { ...g, isPlayed: true };
+      }
+    }
+
+    // 5. PROVAS E ASSERÇÕES RIGOROSAS (CRITÉRIO 0/0):
+
+    // Prova 1: Bloqueio de Inserção Indevida - Nenhum jogo apenas jogado vazou para a estante
+    const nemesisFound = finalShelf.find(g => g.name.toLowerCase().includes('nemesis'));
+    assert.equal(nemesisFound, undefined, 'Bloqueio: Nemesis NÃO deve constar na coleção do usuário');
+
+    const brassFound = finalShelf.find(g => g.name.toLowerCase().includes('brass'));
+    assert.equal(brassFound, undefined, 'Bloqueio: Brass: Birmingham NÃO deve constar na coleção do usuário');
+
+    // Prova 2: Não-Regressão - Todos os jogos que realmente pertencem à coleção foram importados
+    const catan = finalShelf.find(g => g.name === 'Catan');
+    assert.notEqual(catan, undefined, 'Catan (possuído) deve ter sido importado');
+    assert.equal(catan?.isPlayed, true, 'Catan deve estar com status Jogado (isPlayed = true)');
+    assert.equal(catan?.status, 'Na Coleção');
+
+    const tMars = finalShelf.find(g => g.name === 'Terraforming Mars');
+    assert.notEqual(tMars, undefined, 'Terraforming Mars (possuído) deve ter sido importado');
+    assert.equal(tMars?.isPlayed, false, 'Terraforming Mars deve estar Não Jogado (isPlayed = false)');
+    assert.equal(tMars?.status, 'Na Coleção');
+
+    const concordia = finalShelf.find(g => g.name === 'Concordia');
+    assert.notEqual(concordia, undefined, 'Concordia (vendido/teve) deve constar no histórico da coleção');
+    assert.equal(concordia?.status, 'Vendido');
+    assert.equal(concordia?.isPlayed, true);
+
+    // Prova 3: Fusão e Atualização com itens existentes preservada
+    const arnak = finalShelf.find(g => g.name === 'Arnak');
+    assert.notEqual(arnak, undefined, 'Arnak preservado');
+    assert.equal(arnak?.ludoId, '129759', 'ID da Ludopedia vinculado');
+    assert.equal(arnak?.isPlayed, true, 'Arnak atualizado para jogado');
+
+    // Prova 4: Quantidade exata de itens no sistema (2 iniciais + 3 novos importados = 5)
+    // Se Nemesis ou Brass tivessem vazado, o total seria 6 ou 7.
+    assert.equal(finalShelf.length, 5, 'A estante final deve conter exatamente 5 jogos confirmados (0 vazamentos)');
   });
 
   return { passed, failed };

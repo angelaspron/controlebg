@@ -16,6 +16,111 @@ export interface LudopediaParsedData {
   domains?: string[];
   bggId?: string;
   isPlayed?: boolean;
+  isOwned?: boolean;
+}
+
+/**
+ * Valida de forma estrita se o payload da Ludopedia comprova que o jogo
+ * pertence à coleção pessoal do usuário (Ownership Check).
+ * Verifica flags como na_colecao, is_owned, fl_tem, fl_teve, listas pessoais e objetos aninhados.
+ */
+export function isOwnedInLudopedia(data: any, shallowData: any = {}): boolean {
+  const check = (obj: any): boolean | null => {
+    if (!obj || typeof obj !== 'object') return null;
+
+    // 1. Tags explícitas de posse / coleção
+    if (
+      obj.is_owned === 1 || obj.is_owned === '1' || obj.is_owned === true ||
+      obj.is_owned === 'S' || obj.is_owned === 's' || obj.is_owned === 'sim'
+    ) return true;
+
+    if (
+      obj.na_colecao === 1 || obj.na_colecao === '1' || obj.na_colecao === true ||
+      obj.na_colecao === 'S' || obj.na_colecao === 's' || obj.na_colecao === 'sim'
+    ) return true;
+
+    if (
+      obj.em_colecao === 1 || obj.em_colecao === '1' || obj.em_colecao === true ||
+      obj.em_colecao === 'S' || obj.em_colecao === 's' || obj.em_colecao === 'sim'
+    ) return true;
+
+    if (
+      obj.fl_colecao === 1 || obj.fl_colecao === '1' || obj.fl_colecao === true ||
+      obj.fl_colecao === 'S' || obj.fl_colecao === 's' || obj.fl_colecao === 'sim'
+    ) return true;
+
+    if (
+      obj.fl_tem === 1 || obj.fl_tem === '1' || obj.fl_tem === true ||
+      obj.fl_tem === 'S' || obj.fl_tem === 's' || obj.fl_tem === 'sim'
+    ) return true;
+
+    if (
+      obj.fl_teve === 1 || obj.fl_teve === '1' || obj.fl_teve === true ||
+      obj.fl_teve === 'S' || obj.fl_teve === 's' || obj.fl_teve === 'sim'
+    ) return true;
+
+    if (
+      obj.owned === 1 || obj.owned === '1' || obj.owned === true ||
+      obj.owned === 'S' || obj.owned === 's'
+    ) return true;
+
+    if (obj.isOwned === true || obj._isOwned === true) return true;
+
+    // 2. Se a origem for estritamente a lista de coleção pessoal ou teve
+    if (
+      obj._source_lista === 'colecao' || obj._source_lista === 'teve' ||
+      obj.lista === 'colecao' || obj.lista === 'teve'
+    ) {
+      return true;
+    }
+
+    // 3. Status mapeado internamente no GameData
+    if (obj.status === 'Na Coleção' || obj.status === 'Vendido') {
+      return true;
+    }
+
+    // 4. Objetos aninhados retornados pela API da Ludopedia (ex: colecao, item, usuario)
+    if (obj.colecao && typeof obj.colecao === 'object') {
+      const nested = check(obj.colecao);
+      if (nested !== null) return nested;
+    }
+    if (obj.item && typeof obj.item === 'object') {
+      const nested = check(obj.item);
+      if (nested !== null) return nested;
+    }
+    if (obj.usuario && typeof obj.usuario === 'object') {
+      const nested = check(obj.usuario);
+      if (nested !== null) return nested;
+    }
+
+    // Explicitamente não pertencente
+    if (
+      obj.fl_tem === 0 || obj.fl_tem === '0' || obj.fl_tem === false ||
+      obj.fl_tem === 'N' || obj.fl_tem === 'n' || obj.fl_tem === 'nao' || obj.fl_tem === 'não'
+    ) {
+      if (
+        obj.fl_teve !== 1 && obj.fl_teve !== '1' && obj.fl_teve !== true &&
+        obj.na_colecao !== 1 && obj.na_colecao !== true &&
+        obj.is_owned !== 1 && obj.is_owned !== true
+      ) {
+        return false;
+      }
+    }
+
+    if (obj._source_lista === 'jogados' || obj.lista === 'jogados') {
+      return false;
+    }
+
+    return null;
+  };
+
+  const primary = check(data);
+  if (primary !== null) return primary;
+
+  const shallow = check(shallowData);
+  if (shallow !== null) return shallow;
+
+  return false;
 }
 
 export function parseIsPlayedFromLudo(data: any, shallowData: any = {}): boolean {
@@ -224,6 +329,9 @@ export function parseLudopediaDetail(data: any, shallowData: any = {}): Ludopedi
   const rankRaw = data.rank_jogo || shallowData.rank_jogo || data.posicao_rank || shallowData.posicao_rank || data.rank || shallowData.rank;
   const rank = rankRaw ? parseInt(rankRaw, 10) : undefined;
 
+  const isOwned = isOwnedInLudopedia(data, shallowData);
+  const rawIsPlayed = parseIsPlayedFromLudo(data, shallowData);
+
   return {
     ludoId,
     namePt: nmJogo || undefined,
@@ -239,7 +347,8 @@ export function parseLudopediaDetail(data: any, shallowData: any = {}): Ludopedi
     rank: isNaN(rank as number) ? undefined : rank,
     domains: domainsOut.length > 0 ? domainsOut : undefined,
     bggId: inferredBggId,
-    isPlayed: parseIsPlayedFromLudo(data, shallowData),
+    isOwned,
+    isPlayed: isOwned ? rawIsPlayed : false,
   };
 }
 
@@ -310,7 +419,7 @@ export async function fetchLudopediaData(
 
     const detailJson = await detailRes.json();
     
-    // Consulta relação do usuário com o jogo na coleção (fl_jogou, qt_partidas)
+    // Consulta relação do usuário com o jogo exclusivamente na estante pessoal (/colecao/item/:id)
     let userItemData: any = null;
     try {
       const userItemRes = await fetchWithRetry(`/ludo-api/colecao/item/${resolvedLudoId}`);
@@ -321,19 +430,22 @@ export async function fetchLudopediaData(
       // Ignora erro se o usuário não possuir relação cadastrada para esse jogo
     }
 
-    // Fallback adicional para verificar se há registros de partidas do usuário para este id_jogo
-    if (!userItemData?.fl_jogou && (!userItemData?.qt_partidas || userItemData.qt_partidas === 0)) {
-      try {
-        const partRes = await fetchWithRetry(`/ludo-api/partidas?id_jogo=${resolvedLudoId}&rows=1`);
-        if (partRes && partRes.ok) {
-          const partJson = await partRes.json();
-          const hasPartidas = (Array.isArray(partJson.partidas) && partJson.partidas.length > 0) || (partJson.total && Number(partJson.total) > 0);
-          if (hasPartidas) {
-            userItemData = { ...(userItemData || {}), fl_jogou: 1, qt_partidas: partJson.total || partJson.partidas.length };
+    // Se o item pertencer à coleção do usuário e não tiver flag fl_jogou direta,
+    // verifica se possui partidas registradas mantendo o escopo exclusivo
+    if (userItemData && isOwnedInLudopedia(userItemData)) {
+      if (!userItemData.fl_jogou && (!userItemData.qt_partidas || userItemData.qt_partidas === 0)) {
+        try {
+          const partRes = await fetchWithRetry(`/ludo-api/partidas?id_jogo=${resolvedLudoId}&rows=1`);
+          if (partRes && partRes.ok) {
+            const partJson = await partRes.json();
+            const hasPartidas = (Array.isArray(partJson.partidas) && partJson.partidas.length > 0) || (partJson.total && Number(partJson.total) > 0);
+            if (hasPartidas) {
+              userItemData = { ...userItemData, fl_jogou: 1, qt_partidas: partJson.total || partJson.partidas.length };
+            }
           }
+        } catch {
+          // Ignora falha de rede temporária
         }
-      } catch {
-        // Ignora falha de rede temporária
       }
     }
 

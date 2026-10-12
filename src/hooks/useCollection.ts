@@ -8,7 +8,7 @@ import {
   type BatchProgress 
 } from '../services/batchProcessor';
 import { fetchBGGThingWithRetry, searchBGGId, DEFAULT_BGG_TOKEN } from '../services/bggService';
-import { fetchLudopediaData, parseIsPlayedFromLudo } from '../services/ludopediaService';
+import { fetchLudopediaData, parseIsPlayedFromLudo, isOwnedInLudopedia } from '../services/ludopediaService';
 import { fetchComparaJogosData } from '../services/comparaService';
 import { matchesGameName, normalizeGameName } from '../utils/nameMatcher';
 
@@ -526,7 +526,9 @@ export function useCollection() {
       setIsLoading(true);
       let allItems: any[] = [];
 
-      const listasParaBuscar = ['colecao', 'jogados', 'teve'];
+      // Diretriz 1: Endpoints consultados restritos exclusivamente à estante pessoal ('colecao' e 'teve')
+      // Não consulta listas gerais de jogados/partidas como fonte de novos itens para a estante
+      const listasParaBuscar = ['colecao', 'teve'];
 
       for (const lista of listasParaBuscar) {
         let currentPage = 1;
@@ -553,10 +555,6 @@ export function useCollection() {
             const items = Array.isArray(json.colecao) ? json.colecao : [json.colecao];
             items.forEach((it: any) => {
               it._source_lista = lista;
-              if (lista === 'jogados') {
-                it.fl_jogou = 1;
-                it.isPlayed = true;
-              }
             });
             allItems = [...allItems, ...items];
             if (currentPage * 100 >= json.total) {
@@ -571,7 +569,8 @@ export function useCollection() {
         }
       }
 
-      // Buscar histórico agrupado de partidas para identificar todos os jogos que o usuário jogou
+      // Buscar histórico de partidas da Ludopedia exclusivamente para correlacionar
+      // o status isPlayed dos jogos que comprovadamente pertencem à coleção
       const playedGameIds = new Set<string>();
       const playedGameNames = new Set<string>();
       try {
@@ -602,9 +601,9 @@ export function useCollection() {
               ...existing,
               ...item,
               fl_tem: (existing.fl_tem || item.fl_tem),
-              fl_jogou: (existing.fl_jogou || item.fl_jogou || item._source_lista === 'jogados' || existing._source_lista === 'jogados') ? 1 : 0,
+              fl_jogou: (existing.fl_jogou || item.fl_jogou) ? 1 : 0,
               qt_partidas: Math.max(Number(existing.qt_partidas || 0), Number(item.qt_partidas || 0)),
-              isPlayed: Boolean(existing.isPlayed || item.isPlayed || item._source_lista === 'jogados' || existing._source_lista === 'jogados'),
+              isPlayed: Boolean(existing.isPlayed || item.isPlayed || parseIsPlayedFromLudo(item)),
             });
           } else {
             uniqueItemsMap.set(idKey, item);
@@ -627,20 +626,30 @@ export function useCollection() {
             inferredType = item.tipo_jogo;
           }
 
-          const isPlayedInLudo = Boolean(
+          // Diretriz 1: Filtro Estrito de Coleção (Ownership Check)
+          const isOwned = isOwnedInLudopedia(item);
+
+          // Atualizar o status isPlayed (Jogado/Não Jogado) APENAS para os itens que possuam a flag
+          // ou validação de que pertencem à coleção do usuário
+          const isPlayedInLudo = isOwned && Boolean(
             parseIsPlayedFromLudo(item) ||
             item.fl_jogou === 1 ||
             item.isPlayed === true ||
-            item._source_lista === 'jogados' ||
             playedGameIds.has(String(item.id_jogo)) ||
             playedGameNames.has(normalizeGameName(item.nm_jogo))
           );
+
+          let mappedStatus = 'Desconhecido';
+          if (item.fl_tem) mappedStatus = 'Na Coleção';
+          else if (item.fl_teve) mappedStatus = 'Vendido';
+          else if (item.fl_quer) mappedStatus = 'Desejo';
+          else if (isOwned) mappedStatus = 'Na Coleção';
 
           return {
             id: `ludo-${item.id_jogo}-${Date.now()}-${idx}`,
             ludoId: String(item.id_jogo),
             name: item.nm_jogo || 'Jogo Desconhecido',
-            status: item.fl_tem ? 'Na Coleção' : (item.fl_teve ? 'Vendido' : (item.fl_quer ? 'Desejo' : 'Na Coleção')),
+            status: mappedStatus,
             spend: item.vl_custo ? parseFloat(item.vl_custo) : 0,
             type: inferredType,
             value: 0,
@@ -648,7 +657,8 @@ export function useCollection() {
             thumbnail: item.thumb,
             ludoRating: item.vl_nota ? parseFloat(item.vl_nota) : undefined,
             isPlayed: isPlayedInLudo,
-          };
+            _isOwned: isOwned,
+          } as GameData;
         });
 
         setGames(prev => {
@@ -674,6 +684,14 @@ export function useCollection() {
                 isPlayed: Boolean(newPrev[existingIndex].isPlayed || ng.isPlayed),
               };
             } else {
+              // Diretriz 2: Bloqueio de Inserção Indevida
+              // Se o jogo vier da API marcado como "jogado" mas não houver confirmação de que o usuário o possui,
+              // o item deve ser ignorado e descartado do merge final, impedindo que ele apareça na lista de jogos do sistema.
+              const isConfirmedOwned = isOwnedInLudopedia(ng) || (ng as any)._isOwned === true;
+              if (!isConfirmedOwned) {
+                // Descarta o item do merge final
+                continue;
+              }
               newPrev.push(ng);
             }
           }
