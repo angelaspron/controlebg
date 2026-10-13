@@ -79,12 +79,20 @@ export function simulateLudoCollectionImport(
       continue;
     }
 
-    const isPlayedInLudo = Boolean(
-      parseIsPlayedFromLudo(item) ||
-      item.fl_jogou === 1 ||
-      playedGameIds.has(String(item.id_jogo)) ||
-      (item.nm_jogo && playedGameNames.has(item.nm_jogo.trim().toLowerCase()))
-    );
+    const isExp = item.tp_jogo === 'e' || (item.nm_jogo || '').toLowerCase().includes('expans');
+    const isPlayedInLudo = isExp
+      ? Boolean(
+          parseIsPlayedFromLudo(item) ||
+          item.fl_jogou === 1 ||
+          (item.id_jogo && playedGameIds.has(String(item.id_jogo))) ||
+          (item.nm_jogo && playedGameNames.has(item.nm_jogo.trim().toLowerCase()))
+        )
+      : Boolean(
+          parseIsPlayedFromLudo(item) ||
+          item.fl_jogou === 1 ||
+          playedGameIds.has(String(item.id_jogo)) ||
+          (item.nm_jogo && playedGameNames.has(item.nm_jogo.trim().toLowerCase()))
+        );
 
     validIncomingGames.push({
       id: `ludo-${item.id_jogo}`,
@@ -103,17 +111,25 @@ export function simulateLudoCollectionImport(
   const mergedShelf = [...existingCollection];
 
   for (const incoming of validIncomingGames) {
-    const existingIdx = mergedShelf.findIndex(g =>
-      (g.ludoId && incoming.ludoId && g.ludoId === incoming.ludoId) ||
-      g.name.toLowerCase() === incoming.name.toLowerCase()
-    );
+    const isIncomingExp = incoming.type === 'Expansão';
+    const existingIdx = mergedShelf.findIndex(g => {
+      if (g.ludoId && incoming.ludoId) return g.ludoId === incoming.ludoId;
+      const isGExp = g.type === 'Expansão';
+      if (isGExp !== isIncomingExp) return false;
+      return (
+        g.name.toLowerCase() === incoming.name.toLowerCase() ||
+        matchesGameName(g.name, incoming.name)
+      );
+    });
 
     if (existingIdx !== -1) {
+      const prevG = mergedShelf[existingIdx];
+      const isExpTarget = prevG.type === 'Expansão' || incoming.type === 'Expansão';
       mergedShelf[existingIdx] = {
-        ...mergedShelf[existingIdx],
-        ludoId: mergedShelf[existingIdx].ludoId || incoming.ludoId,
-        status: mergedShelf[existingIdx].status === 'Desconhecido' ? incoming.status : mergedShelf[existingIdx].status,
-        isPlayed: Boolean(mergedShelf[existingIdx].isPlayed || incoming.isPlayed),
+        ...prevG,
+        ludoId: prevG.ludoId || incoming.ludoId,
+        status: prevG.status === 'Desconhecido' ? incoming.status : prevG.status,
+        isPlayed: isExpTarget ? incoming.isPlayed : Boolean(prevG.isPlayed || incoming.isPlayed),
       };
     } else {
       mergedShelf.push(incoming);
@@ -125,11 +141,22 @@ export function simulateLudoCollectionImport(
     for (let i = 0; i < mergedShelf.length; i++) {
       const g = mergedShelf[i];
       if (!g.isPlayed) {
-        if (
-          (g.ludoId && playedGameIds.has(g.ludoId)) ||
-          (g.name && playedGameNames.has(g.name.trim().toLowerCase()))
-        ) {
-          mergedShelf[i] = { ...g, isPlayed: true };
+        const isGExp = g.type === 'Expansão';
+        if (isGExp) {
+          if (
+            (g.ludoId && playedGameIds.has(g.ludoId)) ||
+            (g.name && playedGameNames.has(g.name.trim().toLowerCase()))
+          ) {
+            mergedShelf[i] = { ...g, isPlayed: true };
+          }
+        } else {
+          if (
+            (g.ludoId && playedGameIds.has(g.ludoId)) ||
+            (g.name && playedGameNames.has(g.name.trim().toLowerCase())) ||
+            Array.from(playedGameNames).some(pn => matchesGameName(g.name, pn))
+          ) {
+            mergedShelf[i] = { ...g, isPlayed: true };
+          }
         }
       }
     }
@@ -234,6 +261,7 @@ export async function runStrictLudopediaTests(log: (msg: string) => void = conso
   testCase('8. Respostas de endpoints diferentes com títulos coincidentes: Não misturar procedência', () => {
     assert.equal(matchesGameName('Castles of Burgundy', 'Castles of Mad King Ludwig'), false, 'Títulos com palavras temáticas comuns não devem colidir');
     assert.equal(matchesGameName('Marvel United', 'Marvel Champions'), false, 'Títulos da mesma franquia não devem ser confundidos');
+    assert.equal(matchesGameName('Wyrmspan', 'Wyrmspan: Academia dos Dragões'), false, 'Jogo base e expansão com subtítulo temático não devem colidir');
   });
 
   // Cenário 9: Jogo duplicado na resposta da coleção -> Aplicar deduplicação correta
@@ -294,6 +322,47 @@ export async function runStrictLudopediaTests(log: (msg: string) => void = conso
     const secondSync = simulateLudoCollectionImport(firstSync, [page], []);
     assert.equal(secondSync.length, 1, 'Segunda sincronização não deve duplicar Cascadia');
     assert.equal(secondSync[0].name, 'Cascadia');
+  });
+
+  // Cenário 15: Isolamento Estrito de Expansão -> Expansão não deve assumir partidas do jogo base
+  testCase('15. Isolamento Estrito de Expansão: Expansão não jogada vem como NÃO JOGADO mesmo com jogo base jogado', () => {
+    // 1. O usuário jogou o jogo base Wyrmspan no histórico de partidas
+    const historyWithBaseGameOnly = [{ id_jogo: 1001, nm_jogo: 'Wyrmspan' }];
+
+    // 2. Na coleção da API, o usuário tem a expansão "Wyrmspan: Academia dos Dragões"
+    // Na API da Ludopedia ela está marcada como fl_jogou: 0 e qt_partidas: 0
+    const expansionInCollection = [{
+      id_jogo: 1002,
+      nm_jogo: 'Wyrmspan: Academia dos Dragões',
+      tp_jogo: 'e',
+      fl_tem: 1,
+      fl_jogou: 0,
+      qt_partidas: 0,
+      _source_lista: 'colecao'
+    }];
+
+    // 3. Execução da importação
+    const result = simulateLudoCollectionImport([], [expansionInCollection], historyWithBaseGameOnly);
+
+    assert.equal(result.length, 1, 'A expansão pertence à coleção e deve ser importada');
+    assert.equal(result[0].name, 'Wyrmspan: Academia dos Dragões');
+    assert.equal(result[0].type, 'Expansão');
+    // REGRA DE OURO DO USUÁRIO: Se na API não constar na expansão JOGADO, ele deve vir como NÃO JOGADO!
+    assert.equal(result[0].isPlayed, false, 'Expansão NÃO deve herdar status de jogado do jogo base Wyrmspan');
+
+    // 4. E se a expansão realmente tiver sido jogada na API (fl_jogou: 1)
+    const expansionPlayed = [{
+      id_jogo: 1003,
+      nm_jogo: 'Wingspan: Oceania',
+      tp_jogo: 'e',
+      fl_tem: 1,
+      fl_jogou: 1,
+      qt_partidas: 2,
+      _source_lista: 'colecao'
+    }];
+    const resultPlayed = simulateLudoCollectionImport([], [expansionPlayed], []);
+    assert.equal(resultPlayed.length, 1);
+    assert.equal(resultPlayed[0].isPlayed, true, 'Expansão com fl_jogou: 1 na API deve vir como JOGADO');
   });
 
   return { passed, failed };

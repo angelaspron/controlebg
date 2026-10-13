@@ -408,7 +408,9 @@ export function useCollection() {
                 domains: ludoData.domains || g.domains,
                 descriptionPt: ludoData.descriptionPt || g.descriptionPt,
                 isPlayed: (g.isPlayed !== undefined || ludoData.isPlayed !== undefined)
-                  ? Boolean(g.isPlayed || ludoData.isPlayed)
+                  ? ((ludoData.isExpansion || g.type === 'Expansão' || (g as any).isExpansion) && ludoData.isPlayed !== undefined
+                      ? ludoData.isPlayed
+                      : Boolean(g.isPlayed || ludoData.isPlayed))
                   : undefined,
               };
             }));
@@ -668,23 +670,33 @@ export function useCollection() {
           const newPrev = [...prev];
           
           for (const ng of newGames) {
-            const existingIndex = newPrev.findIndex(g => 
-              (g.ludoId && ng.ludoId && g.ludoId === ng.ludoId) ||
-              g.name.toLowerCase() === ng.name.toLowerCase() ||
-              matchesGameName(g.name, ng.name)
-            );
+            const isNgExp = ng.type === 'Expansão';
+            const existingIndex = newPrev.findIndex(g => {
+              if (g.ludoId && ng.ludoId) return g.ludoId === ng.ludoId;
+              const isGExp = g.type === 'Expansão';
+              // Jogo Base e Expansão NUNCA podem ser fundidos por correspondência de nome
+              if (isGExp !== isNgExp) return false;
+              return (
+                g.name.toLowerCase() === ng.name.toLowerCase() ||
+                matchesGameName(g.name, ng.name)
+              );
+            });
             
             if (existingIndex !== -1) {
+              const prevG = newPrev[existingIndex];
+              const isExpTarget = prevG.type === 'Expansão' || ng.type === 'Expansão';
               newPrev[existingIndex] = {
-                ...newPrev[existingIndex],
-                ludoId: newPrev[existingIndex].ludoId || ng.ludoId,
-                thumbnail: newPrev[existingIndex].thumbnail || ng.thumbnail,
-                ludoRating: newPrev[existingIndex].ludoRating || ng.ludoRating,
-                status: newPrev[existingIndex].status === 'Desconhecido' ? ng.status : newPrev[existingIndex].status,
-                spend: newPrev[existingIndex].spend === 0 ? ng.spend : newPrev[existingIndex].spend,
-                yearPublished: newPrev[existingIndex].yearPublished || ng.yearPublished,
-                type: ng.type || newPrev[existingIndex].type,
-                isPlayed: Boolean(newPrev[existingIndex].isPlayed || ng.isPlayed),
+                ...prevG,
+                ludoId: prevG.ludoId || ng.ludoId,
+                thumbnail: prevG.thumbnail || ng.thumbnail,
+                ludoRating: prevG.ludoRating || ng.ludoRating,
+                status: prevG.status === 'Desconhecido' ? ng.status : prevG.status,
+                spend: prevG.spend === 0 ? ng.spend : prevG.spend,
+                yearPublished: prevG.yearPublished || ng.yearPublished,
+                type: ng.type || prevG.type,
+                // Para expansão: o status isPlayed deve refletir diretamente a API da Ludopedia.
+                // Se na API não constar JOGADO, vem como NÃO JOGADO (sem herdar do jogo base ou do cache).
+                isPlayed: isExpTarget ? ng.isPlayed : Boolean(prevG.isPlayed || ng.isPlayed),
               };
             } else {
               // Diretriz 2: Bloqueio de Inserção Indevida
@@ -704,12 +716,24 @@ export function useCollection() {
             for (let i = 0; i < newPrev.length; i++) {
               const g = newPrev[i];
               if (!g.isPlayed) {
-                if (
-                  (g.ludoId && playedGameIds.has(g.ludoId)) ||
-                  playedGameNames.has(normalizeGameName(g.name)) ||
-                  Array.from(playedGameNames).some(pn => matchesGameName(g.name, pn))
-                ) {
-                  newPrev[i] = { ...g, isPlayed: true };
+                const isGExp = g.type === 'Expansão' || (g as any).isExpansion === true;
+                // REGRA CRÍTICA: Expansões NÃO devem assumir partidas do jogo base!
+                // O status de jogado de uma expansão deve vir diretamente dos registros da própria expansão.
+                if (isGExp) {
+                  if (
+                    (g.ludoId && playedGameIds.has(g.ludoId)) ||
+                    playedGameNames.has(normalizeGameName(g.name))
+                  ) {
+                    newPrev[i] = { ...g, isPlayed: true };
+                  }
+                } else {
+                  if (
+                    (g.ludoId && playedGameIds.has(g.ludoId)) ||
+                    playedGameNames.has(normalizeGameName(g.name)) ||
+                    Array.from(playedGameNames).some(pn => matchesGameName(g.name, pn))
+                  ) {
+                    newPrev[i] = { ...g, isPlayed: true };
+                  }
                 }
               }
             }

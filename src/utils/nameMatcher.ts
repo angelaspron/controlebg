@@ -35,14 +35,44 @@ const TRANSLATION_MAP: Record<string, string> = {
   'castelos': 'castles',
 };
 
+/**
+ * Palavras que identificam edições, versões ou especificações de fabricação/localização
+ */
+const EDITION_OR_VERSION_WORDS = new Set([
+  'edicao', 'edition', 'versao', 'version', 'deluxe', 'collector', 'collectors',
+  'brasileira', 'brasil', 'brazilian', 'nacional', 'internacional', 'segunda',
+  'second', 'terceira', 'third', 'quarta', 'fourth', 'reimpressao'
+]);
+
+/**
+ * Prefixos e afixos conhecidos de títulos consolidados de jogos base e suas traduções
+ */
+const KNOWN_TITLE_AFFIXES = new Set([
+  'ruinas', 'perdidas', 'lost', 'ruins', 'settlers', 'colonizadores'
+]);
+
 function stemOrTranslate(w: string): string {
   return TRANSLATION_MAP[w] || w;
 }
 
 /**
+ * Verifica se uma string de nome possui subtítulo temático característico de expansão ou título derivado
+ * (Ex: "Wyrmspan: Academia dos Dragões", "Terraforming Mars: Prelúdio")
+ */
+export function hasExpansionSubtitle(rawName: string): boolean {
+  if (!rawName) return false;
+  const match = rawName.match(/[:\-\u2013]\s*(.+)$/);
+  if (!match) return false;
+  const subNorm = normalizeGameName(match[1]);
+  const subWords = subNorm.split(' ')
+    .filter(w => w.length >= 3 && !COMMON_GAME_WORDS.has(w) && !EDITION_OR_VERSION_WORDS.has(w));
+  return subWords.length > 0;
+}
+
+/**
  * Compara dois nomes de jogos com tolerância para aliases, traduções e nomes parciais
  * (Ex: "Arnak" <-> "As Ruínas Perdidas de Arnak" <-> "Lost Ruins of Arnak")
- * Protege contra falsos positivos entre Jogos Base e Expansões e títulos distintos da mesma franquia.
+ * Protege estritamente contra falsos positivos entre Jogos Base e Expansões e títulos distintos da mesma franquia.
  */
 export function matchesGameName(name1: string, name2: string): boolean {
   if (!name1 || !name2) return false;
@@ -53,21 +83,21 @@ export function matchesGameName(name1: string, name2: string): boolean {
   // 1. Igualdade exata após normalização
   if (n1 === n2) return true;
 
-  // 2. Proteção estrita contra colisão entre Jogo Base e Expansão
+  // 2. Proteção estrita contra colisão entre Jogo Base e Expansão (por subtítulo temático ou flag)
+  const hasSub1 = hasExpansionSubtitle(name1);
+  const hasSub2 = hasExpansionSubtitle(name2);
+  if (hasSub1 !== hasSub2) return false;
+
   const isExp1 = n1.includes('expans') || n1.includes('expansion');
   const isExp2 = n2.includes('expans') || n2.includes('expansion');
   if (isExp1 !== isExp2) return false;
 
-  // 3. Substring direta se o termo mais curto tiver pelo menos 4 caracteres não genéricos
-  const [shorterStr, longerStr] = n1.length <= n2.length ? [n1, n2] : [n2, n1];
-  if (shorterStr.length >= 4 && !COMMON_GAME_WORDS.has(shorterStr)) {
-    const regex = new RegExp(`\\b${shorterStr}\\b`, 'i');
-    if (regex.test(longerStr)) {
-      return true;
-    }
-  }
+  // 3. Proteção contra numerais distintos (ex: "Page 1 Game" vs "Page 2 Game", "Season 1" vs "Season 2")
+  const nums1 = (n1.match(/\b\d+\b/g) || []).join(' ');
+  const nums2 = (n2.match(/\b\d+\b/g) || []).join(' ');
+  if (nums1 && nums2 && nums1 !== nums2) return false;
 
-  // 4. Tokenização e comparação por palavras significativas
+  // 3. Tokenização e comparação por palavras significativas
   const words1 = n1.split(' ')
     .filter(w => w.length >= 3 && !COMMON_GAME_WORDS.has(w))
     .map(stemOrTranslate);
@@ -81,13 +111,24 @@ export function matchesGameName(name1: string, name2: string): boolean {
     // Se o nome mais curto tem apenas 1 palavra distinta (ex: "arnak", "gloomhaven", "scythe")
     if (shorterWords.length === 1 && shorterWords[0].length >= 4 && !COMMON_GAME_WORDS.has(shorterWords[0])) {
       if (longerWords.includes(shorterWords[0])) {
-        return true;
+        // As demais palavras do nome mais longo devem ser apenas qualificadores conhecidos ou termos de edição
+        const extraWords = longerWords.filter(
+          w => w !== shorterWords[0] && !EDITION_OR_VERSION_WORDS.has(w) && !KNOWN_TITLE_AFFIXES.has(w)
+        );
+        if (extraWords.length === 0) {
+          return true;
+        }
       }
     }
 
     // Se todas as palavras significativas do nome mais curto estão no nome mais longo
     if (shorterWords.length > 1 && shorterWords.every(w => longerWords.includes(w))) {
-      return true;
+      const extraWords = longerWords.filter(
+        w => !shorterWords.includes(w) && !EDITION_OR_VERSION_WORDS.has(w) && !KNOWN_TITLE_AFFIXES.has(w)
+      );
+      if (extraWords.length === 0) {
+        return true;
+      }
     }
   }
 
