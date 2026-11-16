@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import type { GameData, ColumnMapping } from '../types';
+import type { GameData, ColumnMapping, SleeveStockItem } from '../types';
 import * as XLSX from 'xlsx';
 import { XMLParser } from 'fast-xml-parser';
 import { 
@@ -319,7 +319,9 @@ export function useCollection() {
                   yearPublished: bggData.yearPublished || g.yearPublished,
                   rating: bggData.rating || g.rating,
                   geekRating: bggData.geekRating || g.geekRating,
-                  weight: bggData.weight || g.weight,
+                  weight: bggData.weight !== undefined 
+                    ? Math.round(bggData.weight * 100) / 100 
+                    : (g.weight !== undefined ? Math.round(Number(g.weight) * 100) / 100 : undefined),
                   rank: bggData.rank || g.rank,
                   domains: bggData.domains || g.domains,
                   mechanics: bggData.mechanics || g.mechanics,
@@ -467,7 +469,7 @@ export function useCollection() {
             total,
             percentage: Math.round((completed / total) * 100),
             currentGameName: game.name,
-            activeApi: 'Compara Jogos (Preços)',
+            activeApi: 'Compara Jogos (Preços e Sleeves)',
           });
 
           const priceData = await fetchComparaJogosData(game.name, game.bggId);
@@ -485,6 +487,7 @@ export function useCollection() {
                 ...g,
                 retailPrice: priceData.retailPrice || g.retailPrice,
                 usedPrice: priceData.usedPrice || g.usedPrice,
+                cardSleeves: priceData.cardSleeves?.sets?.length ? priceData.cardSleeves : g.cardSleeves,
                 value: marketValue,
               };
             }));
@@ -501,7 +504,7 @@ export function useCollection() {
             total,
             percentage: Math.round((completed / total) * 100),
             currentGameName: game.name,
-            activeApi: 'Compara Jogos (Preços)',
+            activeApi: 'Compara Jogos (Preços e Sleeves)',
           });
         },
         abortControllerRef.current.signal
@@ -912,7 +915,7 @@ export function useCollection() {
     }
   };
 
-  const exportToExcel = () => {
+  const exportToExcel = (sleeveStock?: SleeveStockItem[]) => {
     const ws = XLSX.utils.json_to_sheet(games.map(g => ({
       'Nome do Jogo': g.name,
       'Status': g.status,
@@ -929,14 +932,36 @@ export function useCollection() {
       'Tempo de Partida': g.playtime || '',
       'Jogadores Ideais': g.suggestedPlayers?.summary || '',
       'Prêmios': (g.honors || []).join('; '),
+      'Sleevado': g.isSleeved ? 'Sim' : 'Não',
+      'Marca Sleeve': g.sleeveBrand || '',
+      'Tipo Sleeve': g.sleeveType || '',
+      'Sleeves Necessários': g.cardSleeves?.sets ? g.cardSleeves.sets.map(s => `${s.quantity}x ${s.sizeName || ''} (${s.width}x${s.height}mm)`).join('; ') : '',
     })));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Coleção");
+
+    if (sleeveStock && sleeveStock.length > 0) {
+      const sleeveWs = XLSX.utils.json_to_sheet(sleeveStock.map(s => ({
+        'Modelo': s.model,
+        'Marca': s.brand,
+        'Quantidade': s.quantity,
+        'Tipo': s.type || '',
+        'Observações': s.notes || ''
+      })));
+      XLSX.utils.book_append_sheet(wb, sleeveWs, "Estoque de Sleeves");
+    }
+
     XLSX.writeFile(wb, "Minha_Colecao_BGG.xlsx");
   };
 
-  const exportToJson = () => {
-    const dataStr = JSON.stringify(games, null, 2);
+  const exportToJson = (sleeveStock?: SleeveStockItem[]) => {
+    const payload = (sleeveStock && sleeveStock.length > 0) ? {
+      version: 2,
+      exportDate: new Date().toISOString(),
+      games,
+      sleeveStock,
+    } : games;
+    const dataStr = JSON.stringify(payload, null, 2);
     const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
     const exportFileDefaultName = 'Minha_Colecao_BGG.json';
     const linkElement = document.createElement('a');
@@ -945,7 +970,7 @@ export function useCollection() {
     linkElement.click();
   };
 
-  const processJsonUpload = (file: File): Promise<void> => {
+  const processJsonUpload = (file: File, onStockParsed?: (stock: SleeveStockItem[]) => void): Promise<void> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = (e) => {
@@ -955,8 +980,16 @@ export function useCollection() {
           if (Array.isArray(parsed)) {
             setGames(parsed);
             resolve();
+          } else if (parsed && typeof parsed === 'object') {
+            if (Array.isArray(parsed.games)) {
+              setGames(parsed.games);
+            }
+            if (Array.isArray(parsed.sleeveStock) && onStockParsed) {
+              onStockParsed(parsed.sleeveStock);
+            }
+            resolve();
           } else {
-            reject(new Error("Formato inválido. O arquivo JSON deve ser um array de jogos."));
+            reject(new Error("Formato inválido. O arquivo JSON deve ser um array de jogos ou backup completo."));
           }
         } catch (error) {
           reject(error);

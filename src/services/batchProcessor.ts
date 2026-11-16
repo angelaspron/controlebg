@@ -121,7 +121,9 @@ export async function updateSingleGameParallel(
     rating: bggData?.rating || game.rating,
     geekRating: bggData?.geekRating || game.geekRating,
     ludoRating: ludoData?.ludoRating || game.ludoRating,
-    weight: bggData?.weight || game.weight,
+    weight: (bggData?.weight !== undefined) 
+      ? Math.round(bggData.weight * 100) / 100 
+      : (game.weight !== undefined ? Math.round(Number(game.weight) * 100) / 100 : undefined),
     rank: bggData?.rank || ludoData?.rank || game.rank,
     domains: mergedDomains.length > 0 ? mergedDomains : game.domains,
     mechanics: bggData?.mechanics || game.mechanics,
@@ -131,6 +133,7 @@ export async function updateSingleGameParallel(
     descriptionPt: ludoData?.descriptionPt || game.descriptionPt,
     retailPrice: comparaData?.retailPrice || game.retailPrice,
     usedPrice: comparaData?.usedPrice || game.usedPrice,
+    cardSleeves: comparaData?.cardSleeves?.sets?.length ? comparaData.cardSleeves : game.cardSleeves,
     value: marketValue,
     isPlayed: (game.isPlayed !== undefined || ludoData?.isPlayed !== undefined)
       ? ((finalType === 'Expansão' || ludoData?.isExpansion || (game as any).isExpansion) && ludoData?.isPlayed !== undefined

@@ -106,7 +106,8 @@ export function parseBGGThingXml(xmlText: string): BGGParsedData | null {
     const ratings = item.statistics?.ratings;
     const rating = ratings?.average?.['@_value'] ? parseFloat(ratings.average['@_value']) : undefined;
     const geekRating = ratings?.bayesaverage?.['@_value'] ? parseFloat(ratings.bayesaverage['@_value']) : undefined;
-    const weight = ratings?.averageweight?.['@_value'] ? parseFloat(ratings.averageweight['@_value']) : undefined;
+    const rawWeight = ratings?.averageweight?.['@_value'] ? parseFloat(ratings.averageweight['@_value']) : undefined;
+    const weight = (rawWeight !== undefined && !isNaN(rawWeight)) ? Math.round(rawWeight * 100) / 100 : undefined;
 
     // Jogadores e Ano
     const minPlayers = item.minplayers?.['@_value'] ? parseInt(item.minplayers['@_value'], 10) : undefined;

@@ -34,6 +34,53 @@ export interface GameData {
   descriptionPt?: string; // sinopse/descrição em português (Ludopedia)
   retailPrice?: number; // menor preço de varejo (Compara Jogos)
   usedPrice?: number; // estimativa de mercado de usados (Compara Jogos)
+
+  // Dados de Sleeves (Compara Jogos & Rastreamento Pessoal)
+  cardSleeves?: CardSleevesData;
+  isSleeved?: boolean; // Se o jogo já está sleevado na coleção do usuário (geral)
+  sleeveBrand?: string; // Marca do sleeve usado (ou resumo de marcas)
+  sleeveType?: string; // Tipo/espessura (ou resumo de tipos)
+  sleevesUsed?: GameSleeveUsage[]; // Lista de múltiplos sleeves/marcas adicionados pelo usuário
+}
+
+export interface CardSleeveSet {
+  name?: string; // Nome do conjunto de cartas (ex: "Reference cards")
+  quantity: number; // Quantidade de cartas/sleeves
+  width: number; // Largura em mm
+  height: number; // Altura em mm
+  sizeName?: string; // Nome padrão do tamanho (ex: "Padrão", "Mini Euro", "Tarot")
+  sleeveProductName?: string; // Nome comercial do produto sleeve
+  isSleeved?: boolean; // Se este conjunto específico está sleevado
+  sleeveBrand?: string; // Marca do sleeve usado para este conjunto
+  sleeveType?: string; // Tipo/espessura usado para este conjunto
+}
+
+export interface GameSleeveUsage {
+  id?: string;
+  sizeName: string; // Nome do modelo/tamanho (ex: "Padrão (63,5 × 88 mm)")
+  dimensions?: string; // Dimensões formatadas (ex: "63,5 × 88 mm")
+  width?: number;
+  height?: number;
+  quantity?: number; // Quantidade de cartas associadas
+  isSleeved: boolean; // Se este tipo está sleevado
+  sleeveBrand?: string; // Marca do sleeve (ex: Bucaneiros, Gamegenic)
+  sleeveType?: string; // Tipo/espessura (ex: Premium, Slim, Matte)
+}
+
+export interface CardSleevesData {
+  source?: string; // "Compara Jogos"
+  sourceUrl?: string; // Link direto no Compara Jogos
+  sets: CardSleeveSet[];
+}
+
+export interface SleeveStockItem {
+  id: string;
+  model: string; // Modelo/tamanho (ex: "Padrão (63,5 × 88 mm)")
+  brand: string; // Marca (ex: "Bucaneiros", "Gamegenic")
+  quantity: number; // Quantidade disponível no estoque
+  type?: string; // Tipo/espessura (ex: "Premium", "Slim", "Padrão", "Matte")
+  notes?: string; // Observações opcionais
+  updatedAt?: string; // Data ISO da última alteração
 }
 
 export interface ColumnMapping {

@@ -54,7 +54,7 @@ export async function runSmokeTests(logger: (msg: string) => void): Promise<{ pa
             <ratings>
               <average value="8.65" />
               <bayesaverage value="8.42" />
-              <averageweight value="3.91" />
+              <averageweight value="3.9142" />
               <ranks>
                 <rank type="subtype" id="1" name="boardgame" value="3" />
               </ranks>

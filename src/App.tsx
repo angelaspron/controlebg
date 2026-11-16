@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { Dices, Upload, Trash2, Search, Plus, Settings, DownloadCloud, FileSpreadsheet, PieChart, FileJson, Eye, EyeOff, Zap, X } from 'lucide-react';
+import { Dices, Upload, Trash2, Search, Plus, Settings, DownloadCloud, FileSpreadsheet, PieChart, FileJson, Eye, EyeOff, Zap, X, Layers } from 'lucide-react';
 import { useCollection } from './hooks/useCollection';
+import { useSleeveStock } from './hooks/useSleeveStock';
 import { VirtualGameGrid } from './components/VirtualGameGrid';
 import { AddGameModal } from './components/AddGameModal';
 import { EditGameModal } from './components/EditGameModal';
@@ -11,6 +12,8 @@ import { LudoImportModal } from './components/LudoImportModal';
 import { ReportsModal } from './components/ReportsModal';
 import { HelpModal } from './components/HelpModal';
 import { PlayedStatusChart } from './components/PlayedStatusChart';
+import { SleevesStockTab } from './components/SleevesStockTab';
+import { WhoGoesModal } from './components/WhoGoesModal';
 import type { GameData } from './types';
 import { LoginScreen } from './components/LoginScreen';
 import './index.css';
@@ -46,6 +49,16 @@ function App() {
     cancelBatchUpdate,
   } = useCollection();
 
+  const {
+    stock: sleeveStock,
+    addStockItem,
+    updateStockItem,
+    deleteStockItem,
+    adjustQuantity,
+    setStock: setSleeveStock,
+  } = useSleeveStock();
+
+  const [activeMainTab, setActiveMainTab] = useState<'collection' | 'sleeves'>('collection');
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('Todos');
   const [typeFilter, setTypeFilter] = useState('Todos');
@@ -58,6 +71,7 @@ function App() {
   const [isBGGModalOpen, setIsBGGModalOpen] = useState(false);
   const [isLudoModalOpen, setIsLudoModalOpen] = useState(false);
   const [isReportsModalOpen, setIsReportsModalOpen] = useState(false);
+  const [isWhoGoesOpen, setIsWhoGoesOpen] = useState(false);
   const [editingGame, setEditingGame] = useState<GameData | null>(null);
   const [viewingGame, setViewingGame] = useState<GameData | null>(null);
   
@@ -170,7 +184,7 @@ function App() {
       const file = e.target.files[0];
       e.target.value = '';
       try {
-        await processJsonUpload(file);
+        await processJsonUpload(file, setSleeveStock);
       } catch (error) {
         alert('Erro ao processar arquivo. Certifique-se de que é um JSON válido exportado pelo sistema.');
       }
@@ -367,6 +381,9 @@ function App() {
             <button className="btn btn-primary" onClick={() => setIsAddModalOpen(true)} title="Adicionar um novo jogo manualmente à coleção" style={{ padding: '0.5rem 0.75rem', fontSize: '0.85rem' }}>
               <Plus size={16} /> Novo Jogo
             </button>
+            <button className="btn" onClick={() => setIsWhoGoesOpen(true)} title="Sortear quem começa a partida (Quem vai ?)" style={{ padding: '0.5rem 0.75rem', fontSize: '0.85rem' }}>
+              <Dices size={16} /> Quem vai ?
+            </button>
             <button className="btn" onClick={() => setIsReportsModalOpen(true)} title="Visualizar gráficos e estatísticas da sua coleção" style={{ padding: '0.5rem 0.75rem', fontSize: '0.85rem', background: 'var(--accent)', color: '#fff', borderColor: 'var(--accent)' }}>
               <PieChart size={16} /> Estatísticas
             </button>
@@ -401,10 +418,10 @@ function App() {
               
               {/* Exportações & Danger */}
               <div style={{display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'center'}}>
-                <button className="btn" onClick={exportToExcel} title="Exportar para Excel" style={{padding: '0.5rem 0.75rem', fontSize: '0.85rem'}}>
+                <button className="btn" onClick={() => exportToExcel(sleeveStock)} title="Exportar para Excel" style={{padding: '0.5rem 0.75rem', fontSize: '0.85rem'}}>
                   <FileSpreadsheet size={16} />
                 </button>
-                <button className="btn" onClick={exportToJson} title="Exportar Backup JSON" style={{padding: '0.5rem 0.75rem', fontSize: '0.85rem'}}>
+                <button className="btn" onClick={() => exportToJson(sleeveStock)} title="Exportar Backup JSON" style={{padding: '0.5rem 0.75rem', fontSize: '0.85rem'}}>
                   <FileJson size={16} />
                 </button>
                 <button className="btn" onClick={clearCollection} title="Limpar Coleção Local" style={{ padding: '0.5rem 0.75rem', fontSize: '0.85rem', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.3)', marginLeft: '0.5rem' }}>
@@ -416,8 +433,40 @@ function App() {
         </div>
       </header>
 
+      {/* Navegação por Abas: Coleção de Jogos & Estoque de Sleeves */}
+      <div className="main-tab-nav animate-fade-in">
+        <button
+          className={`main-tab-btn ${activeMainTab === 'collection' ? 'active' : ''}`}
+          onClick={() => setActiveMainTab('collection')}
+        >
+          <Dices size={18} />
+          <span>Coleção de Jogos</span>
+          <span className="tab-badge">{games.length}</span>
+        </button>
+        <button
+          className={`main-tab-btn ${activeMainTab === 'sleeves' ? 'active' : ''}`}
+          onClick={() => setActiveMainTab('sleeves')}
+        >
+          <Layers size={18} />
+          <span>Estoque de Sleeves</span>
+          <span className="tab-badge">
+            {sleeveStock.reduce((acc, s) => acc + (Number(s.quantity) || 0), 0)}
+          </span>
+        </button>
+      </div>
+
       <main>
-        {games.length === 0 ? (
+        {activeMainTab === 'sleeves' ? (
+          <SleevesStockTab
+            games={games}
+            stock={sleeveStock}
+            onAddStockItem={addStockItem}
+            onUpdateStockItem={updateStockItem}
+            onDeleteStockItem={deleteStockItem}
+            onAdjustQuantity={adjustQuantity}
+            onClickGameDetails={handleClickDetails}
+          />
+        ) : games.length === 0 ? (
           <div className="glass-panel" style={{textAlign: 'center', padding: '6rem 2rem'}}>
             <Dices size={64} color="var(--text-muted)" style={{opacity: 0.5, margin: '0 auto 1.5rem'}} />
             <h2 style={{fontSize: '1.5rem', marginBottom: '0.5rem'}}>Sua Coleção está Vazia</h2>
@@ -620,6 +669,7 @@ function App() {
       onClose={() => setViewingGame(null)}
       onEdit={setEditingGame}
       onRefresh={(game) => updateGamesParallel([game])}
+      onSaveSleeveInfo={(id, info) => editGame(id, info)}
       isUpdating={activeViewingGame ? updatingGameIds.has(activeViewingGame.id) : false}
     />
 
@@ -680,6 +730,11 @@ function App() {
     <HelpModal
       isOpen={isHelpModalOpen}
       onClose={() => setIsHelpModalOpen(false)}
+    />
+
+    <WhoGoesModal
+      isOpen={isWhoGoesOpen}
+      onClose={() => setIsWhoGoesOpen(false)}
     />
   </>
   );

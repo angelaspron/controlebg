@@ -1,6 +1,10 @@
+import type { CardSleevesData, CardSleeveSet } from '../types';
+import { getCardSleeveSizeName } from '../utils/sleeveUtils';
+
 export interface ComparaPriceData {
   retailPrice?: number; // Menor preço de varejo (lojas novas)
   usedPrice?: number; // Estimativa de mercado de usados
+  cardSleeves?: CardSleevesData; // Informações de sleeves necessárias para o jogo
 }
 
 const FORBIDDEN_ACCESSORIES = [
@@ -55,9 +59,40 @@ export function parseComparaPrices(product: any): ComparaPriceData {
     usedPrice = Math.min(...usedPrices);
   }
 
+  // Extrair contagem e tamanhos de sleeves cadastrados no Compara Jogos
+  const rawSleeves = Array.isArray(product.sleeves) ? product.sleeves : [];
+  const sets: CardSleeveSet[] = rawSleeves.flatMap((s: any) => {
+    const width = Number(s.width);
+    const height = Number(s.height);
+    const quantity = Number(s.quantity);
+    if (!Number.isFinite(width) || !Number.isFinite(height) || !Number.isFinite(quantity) || quantity < 1) {
+      return [];
+    }
+    const sleeveProductName = s.sleeveProduct?.product?.name || undefined;
+    return [{
+      name: s.name || undefined,
+      quantity,
+      width,
+      height,
+      sizeName: getCardSleeveSizeName(width, height, sleeveProductName),
+      sleeveProductName,
+    }];
+  });
+
+  const sourceUrl = product.slug && product.id
+    ? `https://www.comparajogos.com.br/item/${product.slug}/${product.id}`
+    : undefined;
+
+  const cardSleeves: CardSleevesData | undefined = sets.length > 0 ? {
+    source: 'Compara Jogos',
+    sourceUrl,
+    sets,
+  } : undefined;
+
   return {
     retailPrice,
     usedPrice,
+    cardSleeves,
   };
 }
 
@@ -69,13 +104,26 @@ export async function fetchComparaJogosData(
   const maxRetries = options.maxRetries ?? 5;
   const bggIdInt = bggId ? parseInt(bggId, 10) : 0;
 
-  // Query estritamente focada em preços, sem poluir dados estatísticos do jogo
+  // Consulta preços e dados oficiais de cartas/sleeves
   const query = `
-    query GetGamePricesOnly($nameExact: String!, $nameLike: String!, $bggId: Int!) {
+    query GetGamePricesAndSleeves($nameExact: String!, $nameLike: String!, $bggId: Int!) {
       byBggId: product(where: {bgg_id: {_eq: $bggId}}, limit: 1) {
         id
         name
+        slug
         product_price { min_price }
+        sleeves {
+          id
+          name
+          width
+          height
+          quantity
+          sleeveProduct {
+            product {
+              name
+            }
+          }
+        }
         prices {
           name
           price_to
@@ -86,7 +134,20 @@ export async function fetchComparaJogosData(
       byNameExact: product(where: {name: {_ilike: $nameExact}, type: {_in: [game, expansion]}}, limit: 1) {
         id
         name
+        slug
         product_price { min_price }
+        sleeves {
+          id
+          name
+          width
+          height
+          quantity
+          sleeveProduct {
+            product {
+              name
+            }
+          }
+        }
         prices {
           name
           price_to
@@ -97,7 +158,20 @@ export async function fetchComparaJogosData(
       byNameLike: product(where: {name: {_ilike: $nameLike}, type: {_in: [game, expansion]}}, limit: 1) {
         id
         name
+        slug
         product_price { min_price }
+        sleeves {
+          id
+          name
+          width
+          height
+          quantity
+          sleeveProduct {
+            product {
+              name
+            }
+          }
+        }
         prices {
           name
           price_to

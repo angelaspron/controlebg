@@ -230,6 +230,44 @@ export const GameCard = memo(function GameCard({
               {game.isPlayed ? '✔ Jogado' : 'Não Jogado'}
             </span>
           )}
+          {game.isSleeved ? (
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '3px',
+                padding: '1px 6px',
+                borderRadius: '6px',
+                fontSize: '0.72rem',
+                fontWeight: 600,
+                background: 'rgba(99, 102, 241, 0.18)',
+                color: '#a5b4fc',
+                border: '1px solid rgba(99, 102, 241, 0.35)'
+              }}
+              title={game.sleeveBrand ? `Sleevado (${game.sleeveBrand}${game.sleeveType ? ` - ${game.sleeveType}` : ''})` : 'Jogo Sleevado'}
+            >
+              🛡️ Sleevado
+            </span>
+          ) : (
+            game.cardSleeves?.sets && game.cardSleeves.sets.length > 0 && (
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '3px',
+                  padding: '1px 6px',
+                  borderRadius: '6px',
+                  fontSize: '0.72rem',
+                  color: '#94a3b8',
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)'
+                }}
+                title={`Total de cartas: ${game.cardSleeves.sets.reduce((acc, s) => acc + s.quantity, 0)}`}
+              >
+                🃏 {game.cardSleeves.sets.reduce((acc, s) => acc + s.quantity, 0)} cartas
+              </span>
+            )
+          )}
           {game.honors && game.honors.length > 0 && (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px', color: '#fbbf24', fontSize: '0.75rem' }} title={`${game.honors.length} Prêmios`}>
               <Award size={13} /> {game.honors.length}

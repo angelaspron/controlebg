@@ -1,8 +1,32 @@
 import React, { useState, useEffect } from 'react';
-import { X, Search, Loader2, CheckCircle2, RefreshCw, Dices } from 'lucide-react';
-import type { GameData } from '../types';
+import { X, Search, Loader2, CheckCircle2, RefreshCw, Dices, ShieldCheck, Plus, Trash2, Layers } from 'lucide-react';
+import type { GameData, CardSleeveSet, GameSleeveUsage } from '../types';
 import '../components.css';
 import { updateSingleGameParallel } from '../services/batchProcessor';
+import { 
+  KNOWN_SLEEVE_BRANDS, 
+  POPULAR_SLEEVE_MODELS, 
+  parseModelDimensions, 
+  formatCardSleeveDimensions, 
+  summarizeGameSleeves 
+} from '../utils/sleeveUtils';
+
+interface EditSleeveItem {
+  id: string;
+  name: string;
+  quantity: number;
+  width: number;
+  height: number;
+  sizeName: string;
+  isSleeved: boolean;
+  brand: string;
+  isCustomBrand: boolean;
+  customBrand: string;
+  type: string;
+  isCustomAdded: boolean;
+  isCustomModel?: boolean;
+  customModel?: string;
+}
 
 interface EditGameModalProps {
   game: GameData | null;
@@ -31,6 +55,10 @@ export function EditGameModal({ game, isOpen, onClose, onSave, onDelete, onRefre
   const [yearPublished, setYearPublished] = useState('');
   const [rating, setRating] = useState('');
   const [ludoRating, setLudoRating] = useState('');
+  const [isSleeved, setIsSleeved] = useState(false);
+  const [sleeveBrand, setSleeveBrand] = useState('');
+  const [sleeveType, setSleeveType] = useState('');
+  const [editSleeveList, setEditSleeveList] = useState<EditSleeveItem[]>([]);
   const [currentThumbnail, setCurrentThumbnail] = useState<string | undefined>(undefined);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [statusMsg, setStatusMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
@@ -51,16 +79,360 @@ export function EditGameModal({ game, isOpen, onClose, onSave, onDelete, onRefre
       setYearPublished(game.yearPublished ? String(game.yearPublished) : '');
       setRating(game.rating ? String(game.rating) : '');
       setLudoRating(game.ludoRating ? String(game.ludoRating) : '');
+      setIsSleeved(Boolean(game.isSleeved));
+      setSleeveBrand(game.sleeveBrand || '');
+      setSleeveType(game.sleeveType || '');
       setCurrentThumbnail(game.thumbnail);
       setStatusMsg(null);
+
+      const items: EditSleeveItem[] = [];
+
+      // 1. Carregar conjuntos de sleeves do Compara Jogos
+      if (game.cardSleeves?.sets && game.cardSleeves.sets.length > 0) {
+        game.cardSleeves.sets.forEach((set, idx) => {
+          const setBrand = set.sleeveBrand || (game.isSleeved ? (game.sleeveBrand || '') : '');
+          const isKnown = KNOWN_SLEEVE_BRANDS.some(b => b.toLowerCase() === setBrand.toLowerCase());
+          const setSleeved = set.isSleeved !== undefined ? Boolean(set.isSleeved) : Boolean(game.isSleeved);
+
+          const matchingPopularModel = POPULAR_SLEEVE_MODELS.find(m => {
+            const parsed = parseModelDimensions(m);
+            return (
+              (set.sizeName && parsed.sizeName.toLowerCase() === set.sizeName.toLowerCase()) ||
+              (Math.abs(set.width - parsed.width) <= 0.6 && Math.abs(set.height - parsed.height) <= 1.2)
+            );
+          });
+          const isCustomModel = !matchingPopularModel;
+          const customModel = isCustomModel
+            ? (set.sizeName ? `${set.sizeName} (${formatCardSleeveDimensions(set.width, set.height)})` : formatCardSleeveDimensions(set.width, set.height))
+            : '';
+
+          items.push({
+            id: `set-${idx}-${set.width}-${set.height}`,
+            name: set.name || set.sizeName || `Cartas #${idx + 1}`,
+            quantity: set.quantity,
+            width: set.width,
+            height: set.height,
+            sizeName: set.sizeName || 'Padrão',
+            isSleeved: setSleeved,
+            brand: isKnown ? setBrand : (setBrand ? '__other__' : (KNOWN_SLEEVE_BRANDS[0] || 'Bucaneiros')),
+            isCustomBrand: Boolean(setBrand && !isKnown),
+            customBrand: isKnown ? '' : setBrand,
+            type: set.sleeveType || (game.isSleeved ? (game.sleeveType || '') : ''),
+            isCustomAdded: false,
+            isCustomModel,
+            customModel,
+          });
+        });
+      }
+
+      // 2. Carregar sleeves adicionais configurados manualmente pelo usuário
+      if (game.sleevesUsed && game.sleevesUsed.length > 0) {
+        game.sleevesUsed.forEach((su, idx) => {
+          if (items.some(it => it.id === su.id)) return;
+          const suBrand = su.sleeveBrand || '';
+          const isKnown = KNOWN_SLEEVE_BRANDS.some(b => b.toLowerCase() === suBrand.toLowerCase());
+          const parsedDim = parseModelDimensions(su.dimensions || su.sizeName);
+          const finalWidth = su.width || parsedDim.width;
+          const finalHeight = su.height || parsedDim.height;
+
+          const matchingPopularModel = POPULAR_SLEEVE_MODELS.find(m => {
+            const parsed = parseModelDimensions(m);
+            return (
+              (su.sizeName && parsed.sizeName.toLowerCase() === su.sizeName.toLowerCase()) ||
+              (Math.abs(finalWidth - parsed.width) <= 0.6 && Math.abs(finalHeight - parsed.height) <= 1.2)
+            );
+          });
+          const isCustomModel = !matchingPopularModel;
+          const customModel = isCustomModel
+            ? (su.dimensions || `${su.sizeName} (${formatCardSleeveDimensions(finalWidth, finalHeight)})`)
+            : '';
+
+          items.push({
+            id: su.id || `custom-${idx}-${Date.now()}`,
+            name: su.sizeName,
+            quantity: su.quantity || 0,
+            width: finalWidth,
+            height: finalHeight,
+            sizeName: su.sizeName,
+            isSleeved: su.isSleeved !== undefined ? Boolean(su.isSleeved) : true,
+            brand: isKnown ? suBrand : (suBrand ? '__other__' : (KNOWN_SLEEVE_BRANDS[0] || 'Bucaneiros')),
+            isCustomBrand: Boolean(suBrand && !isKnown),
+            customBrand: isKnown ? '' : suBrand,
+            type: su.sleeveType || '',
+            isCustomAdded: true,
+            isCustomModel,
+            customModel,
+          });
+        });
+      }
+
+      // 3. Fallback: se não há sets nem sleevesUsed mas o jogo está marcado como sleevado ou possui marca
+      if (items.length === 0 && (game.isSleeved || game.sleeveBrand)) {
+        const isKnown = KNOWN_SLEEVE_BRANDS.some(b => b.toLowerCase() === (game.sleeveBrand || '').toLowerCase());
+        const parsedDim = parseModelDimensions(POPULAR_SLEEVE_MODELS[0]);
+        items.push({
+          id: `custom-0-${Date.now()}`,
+          name: 'Cartas Principais',
+          quantity: 100,
+          width: parsedDim.width,
+          height: parsedDim.height,
+          sizeName: parsedDim.sizeName,
+          isSleeved: Boolean(game.isSleeved),
+          brand: isKnown ? (game.sleeveBrand || '') : (game.sleeveBrand ? '__other__' : KNOWN_SLEEVE_BRANDS[0]),
+          isCustomBrand: Boolean(game.sleeveBrand && !isKnown),
+          customBrand: isKnown ? '' : (game.sleeveBrand || ''),
+          type: game.sleeveType || '',
+          isCustomAdded: true,
+          isCustomModel: false,
+          customModel: '',
+        });
+      }
+
+      setEditSleeveList(items);
     }
   }, [game]);
+
+  const handleToggleGlobalSleeved = () => {
+    const nextVal = !isSleeved;
+    setIsSleeved(nextVal);
+    if (editSleeveList.length === 0 && nextVal) {
+      const parsedDim = parseModelDimensions(POPULAR_SLEEVE_MODELS[0]);
+      setEditSleeveList([
+        {
+          id: `custom-${Date.now()}`,
+          name: 'Cartas Principais',
+          quantity: 100,
+          width: parsedDim.width,
+          height: parsedDim.height,
+          sizeName: parsedDim.sizeName,
+          isSleeved: true,
+          brand: KNOWN_SLEEVE_BRANDS[0],
+          isCustomBrand: false,
+          customBrand: '',
+          type: 'Padrão',
+          isCustomAdded: true,
+        }
+      ]);
+    } else {
+      setEditSleeveList(prev => prev.map(item => ({ ...item, isSleeved: nextVal })));
+    }
+  };
+
+  const handleToggleItemSleeved = (id: string) => {
+    setEditSleeveList(prev => {
+      const next = prev.map(item => item.id === id ? { ...item, isSleeved: !item.isSleeved } : item);
+      setIsSleeved(next.some(item => item.isSleeved));
+      return next;
+    });
+  };
+
+  const handleItemBrandChange = (id: string, brandVal: string) => {
+    setEditSleeveList(prev =>
+      prev.map(item => {
+        if (item.id !== id) return item;
+        if (brandVal === '__other__') {
+          return { ...item, brand: '__other__', isCustomBrand: true };
+        }
+        return { ...item, brand: brandVal, isCustomBrand: false, customBrand: '' };
+      })
+    );
+  };
+
+  const handleItemCustomBrandChange = (id: string, customVal: string) => {
+    setEditSleeveList(prev =>
+      prev.map(item => (item.id === id ? { ...item, customBrand: customVal } : item))
+    );
+  };
+
+  const handleItemTypeChange = (id: string, typeVal: string) => {
+    setEditSleeveList(prev =>
+      prev.map(item => (item.id === id ? { ...item, type: typeVal } : item))
+    );
+  };
+
+  const handleItemModelChange = (id: string, modelStr: string) => {
+    if (modelStr === '__other__') {
+      setEditSleeveList(prev =>
+        prev.map(item =>
+          item.id === id
+            ? {
+                ...item,
+                isCustomModel: true,
+                customModel: item.customModel || (item.sizeName ? `${item.sizeName} (${formatCardSleeveDimensions(item.width, item.height)})` : formatCardSleeveDimensions(item.width, item.height)),
+              }
+            : item
+        )
+      );
+      return;
+    }
+
+    const dim = parseModelDimensions(modelStr);
+    setEditSleeveList(prev =>
+      prev.map(item =>
+        item.id === id
+          ? {
+              ...item,
+              sizeName: dim.sizeName,
+              width: dim.width,
+              height: dim.height,
+              isCustomModel: false,
+              customModel: '',
+            }
+          : item
+      )
+    );
+  };
+
+  const handleItemCustomModelChange = (id: string, customVal: string) => {
+    const dim = parseModelDimensions(customVal);
+    setEditSleeveList(prev =>
+      prev.map(item => {
+        if (item.id !== id) return item;
+        const hasNumbers = /(\d+(?:[.,]\d+)?)\s*[×xX*]\s*(\d+(?:[.,]\d+)?)/.test(customVal);
+        return {
+          ...item,
+          customModel: customVal,
+          sizeName: dim.sizeName || customVal.trim() || 'Especial',
+          width: hasNumbers ? dim.width : item.width,
+          height: hasNumbers ? dim.height : item.height,
+        };
+      })
+    );
+  };
+
+  const handleItemDimChange = (id: string, width: number, height: number) => {
+    setEditSleeveList(prev =>
+      prev.map(item => {
+        if (item.id !== id) return item;
+        const formatted = formatCardSleeveDimensions(width, height);
+        return {
+          ...item,
+          width,
+          height,
+          customModel: item.sizeName ? `${item.sizeName} (${formatted})` : formatted,
+        };
+      })
+    );
+  };
+
+  const handleItemQtyChange = (id: string, qty: number) => {
+    setEditSleeveList(prev =>
+      prev.map(item => (item.id === id ? { ...item, quantity: Math.max(0, qty) } : item))
+    );
+  };
+
+  const handleAddSleeveRow = () => {
+    const dim = parseModelDimensions(POPULAR_SLEEVE_MODELS[0]);
+    const newRow: EditSleeveItem = {
+      id: `custom-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      name: `Tipo de Carta #${editSleeveList.length + 1}`,
+      quantity: 50,
+      width: dim.width,
+      height: dim.height,
+      sizeName: dim.sizeName,
+      isSleeved: true,
+      brand: KNOWN_SLEEVE_BRANDS[0],
+      isCustomBrand: false,
+      customBrand: '',
+      type: 'Padrão',
+      isCustomAdded: true,
+      isCustomModel: false,
+      customModel: '',
+    };
+    setIsSleeved(true);
+    setEditSleeveList(prev => [...prev, newRow]);
+  };
+
+  const handleRemoveSleeveRow = (id: string) => {
+    setEditSleeveList(prev => {
+      const next = prev.filter(item => item.id !== id);
+      setIsSleeved(next.some(item => item.isSleeved));
+      return next;
+    });
+  };
 
   if (!isOpen || !game) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
+
+    const weightVal = weight ? parseFloat(weight.replace(',', '.')) : undefined;
+    const roundedWeight = (weightVal !== undefined && !isNaN(weightVal)) ? Math.round(weightVal * 100) / 100 : undefined;
+
+    let updatedCardSleeves = game.cardSleeves;
+    let updatedSleevesUsed: GameSleeveUsage[] | undefined = undefined;
+    let finalIsSleeved = Boolean(isSleeved);
+    let finalSleeveBrand = isSleeved ? sleeveBrand.trim() : undefined;
+    let finalSleeveType = isSleeved ? sleeveType.trim() : undefined;
+
+    if (editSleeveList.length > 0) {
+      const updatedSets: CardSleeveSet[] = editSleeveList.map(row => {
+        const finalB = row.isCustomBrand ? row.customBrand.trim() : row.brand.trim();
+        let finalSizeName = row.sizeName;
+        let finalWidth = row.width;
+        let finalHeight = row.height;
+        if (row.isCustomModel && row.customModel) {
+          const parsed = parseModelDimensions(row.customModel);
+          finalSizeName = parsed.sizeName || row.sizeName;
+          if (row.width) finalWidth = row.width;
+          else finalWidth = parsed.width;
+          if (row.height) finalHeight = row.height;
+          else finalHeight = parsed.height;
+        }
+
+        return {
+          name: row.name,
+          quantity: row.quantity,
+          width: finalWidth,
+          height: finalHeight,
+          sizeName: finalSizeName,
+          isSleeved: row.isSleeved,
+          sleeveBrand: row.isSleeved ? (finalB || undefined) : undefined,
+          sleeveType: row.isSleeved ? (row.type.trim() || undefined) : undefined,
+        };
+      });
+
+      const customSleeves: GameSleeveUsage[] = editSleeveList.map(row => {
+        const finalB = row.isCustomBrand ? row.customBrand.trim() : row.brand.trim();
+        let finalSizeName = row.sizeName;
+        let finalWidth = row.width;
+        let finalHeight = row.height;
+        if (row.isCustomModel && row.customModel) {
+          const parsed = parseModelDimensions(row.customModel);
+          finalSizeName = parsed.sizeName || row.sizeName;
+          if (row.width) finalWidth = row.width;
+          else finalWidth = parsed.width;
+          if (row.height) finalHeight = row.height;
+          else finalHeight = parsed.height;
+        }
+
+        return {
+          id: row.id,
+          sizeName: finalSizeName,
+          dimensions: formatCardSleeveDimensions(finalWidth, finalHeight),
+          width: finalWidth,
+          height: finalHeight,
+          quantity: row.quantity,
+          isSleeved: row.isSleeved,
+          sleeveBrand: row.isSleeved ? (finalB || undefined) : undefined,
+          sleeveType: row.isSleeved ? (row.type.trim() || undefined) : undefined,
+        };
+      });
+
+      const summary = summarizeGameSleeves(updatedSets);
+      finalIsSleeved = summary.isSleeved;
+      finalSleeveBrand = summary.sleeveBrand;
+      finalSleeveType = summary.sleeveType;
+
+      updatedCardSleeves = {
+        source: game.cardSleeves?.source || 'Compara Jogos',
+        sourceUrl: game.cardSleeves?.sourceUrl,
+        sets: updatedSets,
+      };
+      updatedSleevesUsed = customSleeves;
+    }
+
     onSave(game.id, {
       name: name.trim(),
       bggId: bggIdInput.trim() || undefined,
@@ -72,10 +444,15 @@ export function EditGameModal({ game, isOpen, onClose, onSave, onDelete, onRefre
       soldValue: soldValue ? parseFloat(soldValue.replace(',', '.')) : 0,
       minPlayers: minPlayers ? parseInt(minPlayers) : undefined,
       maxPlayers: maxPlayers ? parseInt(maxPlayers) : undefined,
-      weight: weight ? parseFloat(weight.replace(',', '.')) : undefined,
+      weight: roundedWeight,
       yearPublished: yearPublished ? parseInt(yearPublished) : undefined,
       rating: rating ? parseFloat(rating.replace(',', '.')) : undefined,
       ludoRating: ludoRating ? parseFloat(ludoRating.replace(',', '.')) : undefined,
+      isSleeved: finalIsSleeved,
+      sleeveBrand: finalSleeveBrand,
+      sleeveType: finalSleeveType,
+      cardSleeves: updatedCardSleeves,
+      sleevesUsed: updatedSleevesUsed,
       thumbnail: currentThumbnail || game.thumbnail,
     });
     onClose();
@@ -283,6 +660,281 @@ export function EditGameModal({ game, isOpen, onClose, onSave, onDelete, onRefre
                 }} />
               </span>
             </label>
+          </div>
+
+          {/* Campo de Status de Sleeves (Sleevado / Não Sleevado e Multi-Sleeves) */}
+          <div 
+            style={{ 
+              display: 'flex', 
+              flexDirection: 'column',
+              gap: '0.75rem',
+              padding: '0.85rem 1.1rem',
+              background: isSleeved ? 'rgba(99, 102, 241, 0.12)' : 'rgba(255, 255, 255, 0.04)',
+              border: `1px solid ${isSleeved ? 'rgba(99, 102, 241, 0.4)' : 'rgba(255, 255, 255, 0.1)'}`,
+              borderRadius: '10px',
+              transition: 'all 0.2s ease',
+            }}
+          >
+            <div 
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
+              onClick={handleToggleGlobalSleeved}
+            >
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                <span style={{ fontWeight: 600, fontSize: '0.95rem', color: isSleeved ? '#a5b4fc' : '#f8fafc', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <ShieldCheck size={18} color={isSleeved ? '#818cf8' : 'var(--text-muted)'} />
+                  Status de Sleeve: {isSleeved ? 'Jogo Sleevado' : 'Sem Sleeve'}
+                </span>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                  {isSleeved ? 'Um ou mais tipos de cartas protegidas com sleeves.' : 'Cartas sem sleeves protetores.'}
+                </span>
+              </div>
+
+              <label 
+                style={{ position: 'relative', display: 'inline-block', width: '48px', height: '26px', cursor: 'pointer', margin: 0 }}
+                onClick={e => e.stopPropagation()}
+              >
+                <input
+                  type="checkbox"
+                  checked={isSleeved}
+                  onChange={handleToggleGlobalSleeved}
+                  style={{ opacity: 0, width: 0, height: 0 }}
+                />
+                <span style={{
+                  position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                  backgroundColor: isSleeved ? '#6366f1' : 'rgba(255,255,255,0.2)',
+                  transition: '0.3s',
+                  borderRadius: '34px',
+                  boxShadow: isSleeved ? '0 0 10px rgba(99, 102, 241, 0.4)' : 'none'
+                }}>
+                  <span style={{
+                    position: 'absolute',
+                    content: '""',
+                    height: '20px',
+                    width: '20px',
+                    left: isSleeved ? '24px' : '3px',
+                    bottom: '3px',
+                    backgroundColor: 'white',
+                    transition: '0.3s',
+                    borderRadius: '50%'
+                  }} />
+                </span>
+              </label>
+            </div>
+
+            {/* Lista de Tipos e Marcas de Sleeves do Jogo */}
+            {editSleeveList.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', paddingTop: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    <Layers size={14} /> Tipos de Sleeves do Jogo ({editSleeveList.length})
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleAddSleeveRow}
+                    style={{
+                      background: 'rgba(99, 102, 241, 0.2)',
+                      border: '1px solid rgba(99, 102, 241, 0.4)',
+                      color: '#c7d2fe',
+                      padding: '3px 8px',
+                      borderRadius: '6px',
+                      fontSize: '0.75rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      fontWeight: 500,
+                    }}
+                  >
+                    <Plus size={13} /> Adicionar Tipo
+                  </button>
+                </div>
+
+                {editSleeveList.map(item => (
+                  <div
+                    key={item.id}
+                    style={{
+                      padding: '0.75rem',
+                      borderRadius: '8px',
+                      background: item.isSleeved ? 'rgba(99, 102, 241, 0.08)' : 'rgba(255, 255, 255, 0.02)',
+                      border: `1px solid ${item.isSleeved ? 'rgba(99, 102, 241, 0.3)' : 'rgba(255, 255, 255, 0.06)'}`,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.5rem',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600, color: item.isSleeved ? '#a5b4fc' : '#94a3b8' }}>
+                        <input
+                          type="checkbox"
+                          checked={item.isSleeved}
+                          onChange={() => handleToggleItemSleeved(item.id)}
+                          style={{ accentColor: '#6366f1' }}
+                        />
+                        <span>{item.isSleeved ? 'Sleevado' : 'Sem Sleeve'}</span>
+                      </label>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                          <span>Qtd:</span>
+                          <input
+                            type="number"
+                            min="0"
+                            value={item.quantity}
+                            onChange={e => handleItemQtyChange(item.id, parseInt(e.target.value) || 0)}
+                            className="search-input"
+                            style={{ width: '65px', padding: '3px 6px', fontSize: '0.8rem' }}
+                          />
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveSleeveRow(item.id)}
+                          title="Remover este tipo de sleeve"
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            color: 'rgba(239, 68, 68, 0.7)',
+                            cursor: 'pointer',
+                            padding: '2px',
+                            display: 'flex',
+                            alignItems: 'center',
+                          }}
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.5rem' }}>
+                      <div>
+                        <label style={{ ...labelStyle, marginBottom: '2px', fontSize: '0.75rem' }}>Modelo / Tamanho</label>
+                        <select
+                          value={item.isCustomModel ? '__other__' : (POPULAR_SLEEVE_MODELS.find(m => {
+                            const parsed = parseModelDimensions(m);
+                            return (
+                              (item.sizeName && parsed.sizeName.toLowerCase() === item.sizeName.toLowerCase()) ||
+                              (Math.abs(item.width - parsed.width) <= 0.6 && Math.abs(item.height - parsed.height) <= 1.2)
+                            );
+                          }) || '__other__')}
+                          onChange={e => handleItemModelChange(item.id, e.target.value)}
+                          className="search-input"
+                          style={{ width: '100%', fontSize: '0.8rem', padding: '4px 8px' }}
+                        >
+                          {POPULAR_SLEEVE_MODELS.map(m => (
+                            <option key={m} value={m}>{m}</option>
+                          ))}
+                          <option value="__other__">Outro / Inserir Manualmente...</option>
+                        </select>
+
+                        {item.isCustomModel && (
+                          <div style={{ marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                            <input
+                              type="text"
+                              value={item.customModel || ''}
+                              onChange={e => handleItemCustomModelChange(item.id, e.target.value)}
+                              placeholder="Nome ou formato (ex: 70x70)"
+                              className="search-input"
+                              style={{ width: '100%', fontSize: '0.8rem', padding: '3px 6px' }}
+                            />
+                            <div style={{ display: 'flex', gap: '3px', alignItems: 'center' }}>
+                              <input
+                                type="number"
+                                step="0.5"
+                                min="20"
+                                max="300"
+                                value={item.width || ''}
+                                onChange={e => handleItemDimChange(item.id, parseFloat(e.target.value) || 0, item.height)}
+                                placeholder="Largura"
+                                title="Largura em mm"
+                                className="search-input"
+                                style={{ width: '45%', fontSize: '0.75rem', padding: '2px 4px' }}
+                              />
+                              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>×</span>
+                              <input
+                                type="number"
+                                step="0.5"
+                                min="20"
+                                max="300"
+                                value={item.height || ''}
+                                onChange={e => handleItemDimChange(item.id, item.width, parseFloat(e.target.value) || 0)}
+                                placeholder="Altura"
+                                title="Altura em mm"
+                                className="search-input"
+                                style={{ width: '45%', fontSize: '0.75rem', padding: '2px 4px' }}
+                              />
+                              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>mm</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      <div>
+                        <label style={{ ...labelStyle, marginBottom: '2px', fontSize: '0.75rem' }}>Marca do Sleeve</label>
+                        <select
+                          value={item.isCustomBrand ? '__other__' : (item.brand || '')}
+                          onChange={e => handleItemBrandChange(item.id, e.target.value)}
+                          className="search-input"
+                          style={{ width: '100%', fontSize: '0.8rem', padding: '4px 8px' }}
+                        >
+                          <option value="">(Selecione)</option>
+                          {KNOWN_SLEEVE_BRANDS.map(b => (
+                            <option key={b} value={b}>{b}</option>
+                          ))}
+                          <option value="__other__">Outra marca...</option>
+                        </select>
+                        {item.isCustomBrand && (
+                          <input
+                            type="text"
+                            value={item.customBrand}
+                            onChange={e => handleItemCustomBrandChange(item.id, e.target.value)}
+                            placeholder="Nome da marca"
+                            className="search-input"
+                            style={{ width: '100%', fontSize: '0.8rem', padding: '3px 6px', marginTop: '3px' }}
+                          />
+                        )}
+                      </div>
+
+                      <div>
+                        <label style={{ ...labelStyle, marginBottom: '2px', fontSize: '0.75rem' }}>Tipo / Espessura</label>
+                        <input
+                          type="text"
+                          value={item.type}
+                          onChange={e => handleItemTypeChange(item.id, e.target.value)}
+                          className="search-input"
+                          placeholder="Ex: Premium, Slim, Padrão"
+                          style={{ width: '100%', fontSize: '0.8rem', padding: '4px 8px' }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Caso isSleeved esteja ativo mas editSleeveList esteja vazia */}
+            {isSleeved && editSleeveList.length === 0 && (
+              <div style={{ display: 'flex', justifyContent: 'center', paddingTop: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                <button
+                  type="button"
+                  onClick={handleAddSleeveRow}
+                  style={{
+                    background: 'rgba(99, 102, 241, 0.2)',
+                    border: '1px solid rgba(99, 102, 241, 0.4)',
+                    color: '#c7d2fe',
+                    padding: '6px 12px',
+                    borderRadius: '8px',
+                    fontSize: '0.82rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontWeight: 600,
+                  }}
+                >
+                  <Plus size={15} /> Adicionar Tipos e Marcas de Sleeves
+                </button>
+              </div>
+            )}
           </div>
 
           <div style={{ display: 'flex', gap: '1rem' }}>
