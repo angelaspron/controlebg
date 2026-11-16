@@ -34,7 +34,7 @@ export function getCardSpriteStyle(cardIndex: number): CSSProperties {
   const safeIndex = Math.max(0, Math.min(QUEM_VAI_CARDS.length - 1, cardIndex));
   
   return {
-    backgroundImage: `url('/boardgame-cards/cartoon/card-${safeIndex}.jpg')`,
+    backgroundImage: `url('/boardgame-cards/quem-vai-cards/card-${safeIndex}.png')`,
     backgroundPosition: 'center',
     backgroundSize: 'cover',
     backgroundRepeat: 'no-repeat',

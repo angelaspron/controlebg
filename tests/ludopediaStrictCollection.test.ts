@@ -82,17 +82,17 @@ export function simulateLudoCollectionImport(
     const isExp = item.tp_jogo === 'e' || (item.nm_jogo || '').toLowerCase().includes('expans');
     const isPlayedInLudo = isExp
       ? Boolean(
-          parseIsPlayedFromLudo(item) ||
-          item.fl_jogou === 1 ||
-          (item.id_jogo && playedGameIds.has(String(item.id_jogo))) ||
-          (item.nm_jogo && playedGameNames.has(item.nm_jogo.trim().toLowerCase()))
-        )
+        parseIsPlayedFromLudo(item) ||
+        item.fl_jogou === 1 ||
+        (item.id_jogo && playedGameIds.has(String(item.id_jogo))) ||
+        (item.nm_jogo && playedGameNames.has(item.nm_jogo.trim().toLowerCase()))
+      )
       : Boolean(
-          parseIsPlayedFromLudo(item) ||
-          item.fl_jogou === 1 ||
-          playedGameIds.has(String(item.id_jogo)) ||
-          (item.nm_jogo && playedGameNames.has(item.nm_jogo.trim().toLowerCase()))
-        );
+        parseIsPlayedFromLudo(item) ||
+        item.fl_jogou === 1 ||
+        playedGameIds.has(String(item.id_jogo)) ||
+        (item.nm_jogo && playedGameNames.has(item.nm_jogo.trim().toLowerCase()))
+      );
 
     validIncomingGames.push({
       id: `ludo-${item.id_jogo}`,
