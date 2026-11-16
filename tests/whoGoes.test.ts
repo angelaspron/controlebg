@@ -33,50 +33,26 @@ export async function runWhoGoesTests(logger: (msg: string) => void): Promise<{ 
     });
   });
 
-  // Teste 3: Mapeamento de Sprite Sheets (3 sheets x 9 cartas = 27)
-  test('Mapeamento de Sprite: Distribui 9 cartas por folha com coordenadas corretas', () => {
-    // Sheet 1 (índices 0 a 8)
-    const card0 = getCardSpriteStyle(0);
-    assert.ok(String(card0.backgroundImage).includes('quem-vai-v2-sheet-1.png'));
-    assert.equal(card0.backgroundPosition, '0% 0%');
-
-    const card4 = getCardSpriteStyle(4);
-    assert.ok(String(card4.backgroundImage).includes('quem-vai-v2-sheet-1.png'));
-    assert.equal(card4.backgroundPosition, '50% 50%');
-
-    const card8 = getCardSpriteStyle(8);
-    assert.ok(String(card8.backgroundImage).includes('quem-vai-v2-sheet-1.png'));
-    assert.equal(card8.backgroundPosition, '100% 100%');
-
-    // Sheet 2 (índices 9 a 17)
-    const card9 = getCardSpriteStyle(9);
-    assert.ok(String(card9.backgroundImage).includes('quem-vai-v2-sheet-2.png'));
-    assert.equal(card9.backgroundPosition, '0% 0%');
-
-    const card17 = getCardSpriteStyle(17);
-    assert.ok(String(card17.backgroundImage).includes('quem-vai-v2-sheet-2.png'));
-    assert.equal(card17.backgroundPosition, '100% 100%');
-
-    // Sheet 3 (índices 18 a 26)
-    const card18 = getCardSpriteStyle(18);
-    assert.ok(String(card18.backgroundImage).includes('quem-vai-v2-sheet-3.png'));
-    assert.equal(card18.backgroundPosition, '0% 0%');
-
-    const card26 = getCardSpriteStyle(26);
-    assert.ok(String(card26.backgroundImage).includes('quem-vai-v2-sheet-3.png'));
-    assert.equal(card26.backgroundPosition, '100% 100%');
+  // Teste 3: Mapeamento de Cartas de Arte Estilo Cartoon
+  test('Mapeamento de Cartas: Cada índice mapeia para seu arquivo individual de ilustração cartoon', () => {
+    for (let i = 0; i < 27; i++) {
+      const cardStyle = getCardSpriteStyle(i);
+      assert.ok(String(cardStyle.backgroundImage).includes(`/boardgame-cards/cartoon/card-${i}.jpg`), `Carta #${i} deve mapear para card-${i}.jpg`);
+      assert.equal(cardStyle.backgroundSize, 'cover');
+      assert.equal(cardStyle.backgroundPosition, 'center');
+    }
   });
 
-  // Teste 4: Existência Física dos Arquivos de Imagem
-  test('Arquivos de Arte: As 3 folhas PNG existem em public/boardgame-cards/ com tamanhos válidos', () => {
-    const cardsDir = path.join(process.cwd(), 'public', 'boardgame-cards');
-    assert.ok(fs.existsSync(cardsDir), 'Pasta public/boardgame-cards deve existir');
+  // Teste 4: Existência Física de Todas as 27 Imagens Cartoon
+  test('Arquivos de Arte: Todas as 27 ilustrações cartoon existem em public/boardgame-cards/cartoon/ com tamanhos válidos', () => {
+    const cartoonDir = path.join(process.cwd(), 'public', 'boardgame-cards', 'cartoon');
+    assert.ok(fs.existsSync(cartoonDir), 'Pasta public/boardgame-cards/cartoon deve existir');
 
-    for (let i = 1; i <= 3; i++) {
-      const sheetPath = path.join(cardsDir, `quem-vai-v2-sheet-${i}.png`);
-      assert.ok(fs.existsSync(sheetPath), `Folha quem-vai-v2-sheet-${i}.png deve existir`);
-      const stat = fs.statSync(sheetPath);
-      assert.ok(stat.size > 1000000, `Folha ${i} deve ter tamanho maior que 1MB (possui ${stat.size} bytes)`);
+    for (let i = 0; i < 27; i++) {
+      const cardPath = path.join(cartoonDir, `card-${i}.jpg`);
+      assert.ok(fs.existsSync(cardPath), `Ilustração cartoon card-${i}.jpg deve existir`);
+      const stat = fs.statSync(cardPath);
+      assert.ok(stat.size > 50000, `Carta ${i} deve ter tamanho maior que 50KB (possui ${stat.size} bytes)`);
     }
   });
 

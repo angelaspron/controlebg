@@ -32,14 +32,12 @@ export const QUEM_VAI_CARDS: string[] = [
 
 export function getCardSpriteStyle(cardIndex: number): CSSProperties {
   const safeIndex = Math.max(0, Math.min(QUEM_VAI_CARDS.length - 1, cardIndex));
-  const sheetNumber = Math.floor(safeIndex / 9) + 1;
-  const col = safeIndex % 3;
-  const row = Math.floor(safeIndex / 3) % 3;
   
   return {
-    backgroundImage: `url('/boardgame-cards/quem-vai-v2-sheet-${sheetNumber}.png')`,
-    backgroundPosition: `${col * 50}% ${row * 50}%`,
-    backgroundSize: '300% 300%',
+    backgroundImage: `url('/boardgame-cards/cartoon/card-${safeIndex}.jpg')`,
+    backgroundPosition: 'center',
+    backgroundSize: 'cover',
+    backgroundRepeat: 'no-repeat',
   };
 }
 
