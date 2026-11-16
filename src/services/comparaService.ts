@@ -1,5 +1,5 @@
 import type { CardSleevesData, CardSleeveSet } from '../types';
-import { getCardSleeveSizeName } from '../utils/sleeveUtils';
+import { getCardSleeveSizeName } from '../utils/sleeveUtils.ts';
 
 export interface ComparaPriceData {
   retailPrice?: number; // Menor preço de varejo (lojas novas)
