@@ -145,12 +145,12 @@ export function WhoGoesModal({ isOpen, onClose, initialIndex }: WhoGoesModalProp
           <div 
             style={{
               ...spriteStyle,
-              aspectRatio: '1',
+              aspectRatio: '3 / 4',
               width: '100%',
-              backgroundColor: '#efe4cb',
+              backgroundColor: '#dbeafe',
               backgroundRepeat: 'no-repeat',
               backgroundPosition: 'center',
-              backgroundSize: 'contain',
+              backgroundSize: 'cover',
             }}
             role="img"
             aria-label={currentText}

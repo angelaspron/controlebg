@@ -34,26 +34,26 @@ export async function runWhoGoesTests(logger: (msg: string) => void): Promise<{ 
     });
   });
 
-  // Teste 3: Mapeamento de Cartas com 27 Imagens Exclusivas
-  test('Mapeamento de Cartas: Cada índice mapeia para seu arquivo individual de carta exclusiva', () => {
+  // Teste 3: Mapeamento de Cartas com 27 Imagens Exclusivas no Estilo Cartoon Sitcom
+  test('Mapeamento de Cartas: Cada índice mapeia para seu arquivo individual de ilustração cartoon', () => {
     for (let i = 0; i < 27; i++) {
       const cardStyle = getCardSpriteStyle(i);
-      assert.ok(String(cardStyle.backgroundImage).includes(`/boardgame-cards/quem-vai-cards/card-${i}.png`), `Carta #${i} deve mapear para card-${i}.png`);
+      assert.ok(String(cardStyle.backgroundImage).includes(`/boardgame-cards/cartoon/card-${i}.jpg`), `Carta #${i} deve mapear para cartoon/card-${i}.jpg`);
       assert.equal(cardStyle.backgroundSize, 'cover');
       assert.equal(cardStyle.backgroundPosition, 'center');
     }
   });
 
-  // Teste 4: Existência Física e Unicidade Absoluta das 27 Cartas
-  test('Arquivos de Arte: Todas as 27 cartas existem em public/boardgame-cards/quem-vai-cards/ e nenhuma é repetida', () => {
-    const cardsDir = path.join(process.cwd(), 'public', 'boardgame-cards', 'quem-vai-cards');
-    assert.ok(fs.existsSync(cardsDir), 'Pasta public/boardgame-cards/quem-vai-cards deve existir');
+  // Teste 4: Existência Física e Unicidade Absoluta das 27 Ilustrações
+  test('Arquivos de Arte: Todas as 27 cartas existem em public/boardgame-cards/cartoon/ e nenhuma é repetida', () => {
+    const cardsDir = path.join(process.cwd(), 'public', 'boardgame-cards', 'cartoon');
+    assert.ok(fs.existsSync(cardsDir), 'Pasta public/boardgame-cards/cartoon deve existir');
 
     const hashes = new Set<string>();
 
     for (let i = 0; i < 27; i++) {
-      const cardPath = path.join(cardsDir, `card-${i}.png`);
-      assert.ok(fs.existsSync(cardPath), `Carta card-${i}.png deve existir`);
+      const cardPath = path.join(cardsDir, `card-${i}.jpg`);
+      assert.ok(fs.existsSync(cardPath), `Carta cartoon card-${i}.jpg deve existir`);
       const stat = fs.statSync(cardPath);
       assert.ok(stat.size > 20000, `Carta ${i} deve ter tamanho maior que 20KB (possui ${stat.size} bytes)`);
 
