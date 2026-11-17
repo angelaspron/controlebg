@@ -166,17 +166,91 @@ export interface CollectionSleeveDemand {
 }
 
 /**
+ * Verifica estritamente se o jogo pertence à coleção ativa do usuário.
+ * Exclui categoricamente jogos vendidos, com tag VENDIDOS/VENDIDO, ex-coleção ou em lista de desejos.
+ */
+export function isGameInCollection(game: GameData): boolean {
+  if (!game) return false;
+
+  // 1. Se possuir valor de venda registrado maior que zero, o jogo foi vendido
+  if (game.soldValue !== undefined && game.soldValue !== null && game.soldValue !== '' && game.soldValue !== 0 && game.soldValue !== '0') {
+    const cleanedSold = String(game.soldValue).replace(/[^\d.,]/g, '').replace(',', '.');
+    const soldNum = parseFloat(cleanedSold);
+    if (!isNaN(soldNum) && soldNum > 0) {
+      return false;
+    }
+    const soldStr = String(game.soldValue).toLowerCase().trim();
+    if (soldStr && soldStr !== '0' && soldStr !== 'não' && soldStr !== 'nao' && soldStr !== 'false') {
+      return false;
+    }
+  }
+
+  // 2. Coletar e normalizar todos os campos de status, tag, tags, situação, estado e tipo
+  const combined = [
+    game.status,
+    (game as any).tag,
+    (game as any).tags,
+    (game as any).statusBadge,
+    (game as any).situacao,
+    (game as any).situação,
+    (game as any).estado,
+    game.type,
+    (game as any).tipo,
+    (game as any).notes,
+    (game as any).observacao,
+    (game as any).observação
+  ]
+    .filter(Boolean)
+    .map(v => Array.isArray(v) ? v.join(' ') : String(v))
+    .join(' ')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, ''); // Remove acentos (ex: "coleção" -> "colecao", "não" -> "nao")
+
+  // 3. Bloqueio estrito de venda, desapego, troca, doação ou ex-coleção em qualquer formato
+  const soldKeywords = [
+    'vendid', 'venda', 'vendeu', 'vendi',
+    'sold', 'prevowned',
+    'fora da colecao', 'ex-colecao', 'ex colecao',
+    'desapeg', 'desapego', 'desapegado',
+    'repassad', 'passad',
+    'trocad',
+    'doad',
+    'nao tenho', 'sem jogo',
+    'teve', 'ja teve'
+  ];
+  if (soldKeywords.some(kw => combined.includes(kw))) {
+    return false;
+  }
+
+  // 4. Bloqueio de lista de desejos
+  const wishlistKeywords = ['desejo', 'wishlist', 'quero', 'pretendo', 'interesse', 'comprar'];
+  if (wishlistKeywords.some(kw => combined.includes(kw))) {
+    return false;
+  }
+
+  // 5. Posse ativa comprovada na coleção
+  const ownedKeywords = [
+    'colecao', 'na colecao', 'minha colecao',
+    'possuo', 'tenho', 'owned', 'in collection',
+    'sim', 'true', 'ativo'
+  ];
+  const hasOwnedKeyword = ownedKeywords.some(kw => combined.includes(kw));
+  const s = String(game.status || '').toLowerCase().trim();
+  const isStandardType = s === '' || s === 'base' || s === 'expansão' || s === 'expansao' || s === 'promo' || s === 'acessório' || s === 'acessorio';
+
+  return hasOwnedKeyword || isStandardType;
+}
+
+/**
  * Agrupa todas as necessidades de sleeves da coleção para cruzamento com o estoque,
  * respeitando o status de sleevado e marca individual de cada conjunto/tamanho.
  */
 export function computeCollectionSleeveDemands(games: GameData[]): CollectionSleeveDemand[] {
   const demandMap = new Map<string, CollectionSleeveDemand>();
 
-  // Apenas jogos que estão na coleção (ou vendidos mas o usuário quer saber) - preferência para Na Coleção
-  const ownedGames = games.filter(g => {
-    const s = String(g.status || '').toLowerCase();
-    return s.includes('coleção') || s.includes('sim') || !s.includes('vendido');
-  });
+  // Apenas jogos que estão estritamente na coleção atual (exclui jogos vendidos)
+  const ownedGames = games.filter(isGameInCollection);
 
   for (const game of ownedGames) {
     // Processar tanto cardSleeves.sets quanto sleevesUsed adicionados pelo usuário
@@ -193,10 +267,17 @@ export function computeCollectionSleeveDemands(games: GameData[]): CollectionSle
       const quantity = Number(set.quantity) || 0;
       if (quantity <= 0) continue;
 
-      const sizeName = set.sizeName || getCardSleeveSizeName(width, height, (set as any).sleeveProductName);
-      const dimensions = formatCardSleeveDimensions(width, height);
+      const standardMatch = STANDARD_SLEEVE_SIZES.find(s => 
+        isApprox(width, s.width, 0.8) && isApprox(height, s.height, 1.8)
+      );
+      const canonicalWidth = standardMatch ? standardMatch.width : width;
+      const canonicalHeight = standardMatch ? standardMatch.height : height;
+      const sizeName = (set.sizeName && set.sizeName !== 'Especial')
+        ? set.sizeName 
+        : (standardMatch ? standardMatch.name : getCardSleeveSizeName(width, height, (set as any).sleeveProductName));
+      const dimensions = formatCardSleeveDimensions(canonicalWidth, canonicalHeight);
       // Chave única para agrupar tamanhos equivalentes
-      const key = `${Math.round(width * 2) / 2}x${Math.round(height)}`;
+      const key = `${Math.round(canonicalWidth * 2) / 2}x${Math.round(canonicalHeight)}`;
 
       let item = demandMap.get(key);
       if (!item) {
@@ -204,8 +285,8 @@ export function computeCollectionSleeveDemands(games: GameData[]): CollectionSle
           key,
           modelName: sizeName !== 'Especial' ? sizeName : `${dimensions}`,
           dimensions,
-          width,
-          height,
+          width: canonicalWidth,
+          height: canonicalHeight,
           totalCards: 0,
           neededCards: 0,
           games: []

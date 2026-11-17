@@ -1,4 +1,6 @@
 import { matchesGameName } from '../utils/nameMatcher.ts';
+import type { CardSleevesData, CardSleeveSet } from '../types/index.ts';
+import { getCardSleeveSizeName, parseModelDimensions } from '../utils/sleeveUtils.ts';
 
 export interface LudopediaParsedData {
   ludoId: string;
@@ -17,6 +19,7 @@ export interface LudopediaParsedData {
   bggId?: string;
   isPlayed?: boolean;
   isOwned?: boolean;
+  cardSleeves?: CardSleevesData; // Quantidade e tipos de sleeves extraídos da Ludopedia (fallback secundário)
 }
 
 /**
@@ -201,6 +204,110 @@ export function parseIsPlayedFromLudo(data: any, shallowData: any = {}): boolean
   return false;
 }
 
+/**
+ * Parser de contingência secundária para extrair contagem e tamanhos de sleeves
+ * a partir de estruturas ou descrições da API da Ludopedia.
+ */
+export function parseLudopediaSleeves(data: any, shallowData: any = {}): CardSleevesData | undefined {
+  if (!data && !shallowData) return undefined;
+
+  const raw = { ...(shallowData || {}), ...(data || {}) };
+  const sets: CardSleeveSet[] = [];
+
+  // 1. Arrays estruturados diretos: data.sleeves, data.cartas, data.card_sleeves, data.protetores, data.componentes
+  const rawList = Array.isArray(raw.sleeves) ? raw.sleeves :
+                  Array.isArray(raw.cartas) ? raw.cartas :
+                  Array.isArray(raw.card_sleeves) ? raw.card_sleeves :
+                  Array.isArray(raw.protetores) ? raw.protetores :
+                  Array.isArray(raw.componentes) ? raw.componentes : [];
+
+  for (const item of rawList) {
+    if (!item || typeof item !== 'object') continue;
+
+    const qty = Number(item.quantity || item.qt_cartas || item.quantidade || item.qtde || item.qt || 0);
+    let width = Number(item.width || item.largura || item.tam_largura || item.dim_largura || 0);
+    let height = Number(item.height || item.altura || item.tam_altura || item.dim_altura || 0);
+    let sizeName = item.sizeName || item.nm_tamanho || item.tp_sleeve || item.modelo || item.tamanho || '';
+
+    // Se as dimensões estão em formato texto (ex: "63,5 x 88 mm" ou "63.5x88")
+    if ((!width || !height) && (typeof item.dimensoes === 'string' || typeof item.tamanho === 'string' || typeof item.descricao === 'string')) {
+      const parsedDim = parseModelDimensions(item.dimensoes || item.tamanho || item.descricao || '');
+      width = parsedDim.width;
+      height = parsedDim.height;
+      if (!sizeName) sizeName = parsedDim.sizeName;
+    }
+
+    if (qty > 0 && width > 0 && height > 0) {
+      sets.push({
+        name: item.name || item.nm_cartas || item.descricao || item.ds_item || undefined,
+        quantity: qty,
+        width,
+        height,
+        sizeName: sizeName || getCardSleeveSizeName(width, height),
+        sleeveProductName: item.sleeveProductName || item.nm_produto || undefined
+      });
+    }
+  }
+
+  // 2. Parser por Expressões Regulares na descrição se nenhum array estruturado foi detectado
+  if (sets.length === 0) {
+    const text = String(raw.ds_jogo || raw.descricao || raw.de_resumo || raw.componentes_texto || '');
+    if (text) {
+      // Padrão A: "110 cartas (63,5 x 88 mm)" ou "110 cartas 63.5x88"
+      const regexA = /(\d+)\s*(?:cartas?|cards?|sleeves?)\s*(?:\((?:tamanho\s*)?([^\)]+)\)|(?:tamanho\s*)?(\d+(?:[.,]\d+)?\s*[xX×]\s*\d+(?:[.,]\d+)?(?:\s*mm)?))/gi;
+      let match;
+      while ((match = regexA.exec(text)) !== null) {
+        const qty = parseInt(match[1], 10);
+        const dimStr = match[2] || match[3] || '';
+        const parsed = parseModelDimensions(dimStr);
+        if (qty > 0 && parsed.width > 0 && parsed.height > 0) {
+          sets.push({
+            quantity: qty,
+            width: parsed.width,
+            height: parsed.height,
+            sizeName: parsed.sizeName || getCardSleeveSizeName(parsed.width, parsed.height),
+          });
+        }
+      }
+
+      // Padrão B: "Sleeves: 162 Padrão (63,5x88mm), 8 Tarot (70x120mm)"
+      if (sets.length === 0) {
+        const regexB = /(?:sleeves?|protetores?)\s*:\s*([^.\n\r]+)/i;
+        const bMatch = text.match(regexB);
+        if (bMatch) {
+          const sleeveText = bMatch[1];
+          const itemRegex = /(\d+)\s*(?:x\s*)?([^\d,;]+)?\s*\(?(\d+(?:[.,]\d+)?\s*[xX×]\s*\d+(?:[.,]\d+)?(?:\s*mm)?)\)?/gi;
+          let iMatch;
+          while ((iMatch = itemRegex.exec(sleeveText)) !== null) {
+            const qty = parseInt(iMatch[1], 10);
+            const rawName = (iMatch[2] || '').trim();
+            const dimStr = iMatch[3];
+            const parsed = parseModelDimensions(dimStr);
+            if (qty > 0 && parsed.width > 0 && parsed.height > 0) {
+              sets.push({
+                name: rawName || undefined,
+                quantity: qty,
+                width: parsed.width,
+                height: parsed.height,
+                sizeName: rawName || parsed.sizeName || getCardSleeveSizeName(parsed.width, parsed.height),
+              });
+            }
+          }
+        }
+      }
+    }
+  }
+
+  if (sets.length === 0) return undefined;
+
+  const ludoId = raw.id_jogo || raw.ludoId;
+  return {
+    source: 'Ludopedia',
+    sourceUrl: ludoId ? `https://ludopedia.com.br/jogo/${ludoId}` : undefined,
+    sets
+  };
+}
+
 export function parseLudopediaDetail(data: any, shallowData: any = {}): LudopediaParsedData {
   const ludoId = String(data.id_jogo || shallowData.id_jogo || '');
   const nmJogo = String(data.nm_jogo || shallowData.nm_jogo || '');
@@ -359,16 +466,18 @@ export function parseLudopediaDetail(data: any, shallowData: any = {}): Ludopedi
     bggId: inferredBggId,
     isOwned,
     isPlayed: isOwned ? rawIsPlayed : false,
+    cardSleeves: parseLudopediaSleeves(data, shallowData),
   };
 }
 
 export async function fetchLudopediaData(
   gameName: string,
-  token: string,
+  token?: string,
   ludoId?: string,
   options: { maxRetries?: number } = {}
 ): Promise<LudopediaParsedData | null> {
-  if (!token) return null;
+  const resolvedToken = token || (typeof window !== 'undefined' ? localStorage.getItem('boardgame_manager_ludo_token') || '' : '');
+  if (!resolvedToken) return null;
   const maxRetries = options.maxRetries ?? 5;
 
   const fetchWithRetry = async (url: string) => {

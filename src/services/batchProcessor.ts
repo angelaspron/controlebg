@@ -133,7 +133,11 @@ export async function updateSingleGameParallel(
     descriptionPt: ludoData?.descriptionPt || game.descriptionPt,
     retailPrice: comparaData?.retailPrice || game.retailPrice,
     usedPrice: comparaData?.usedPrice || game.usedPrice,
-    cardSleeves: comparaData?.cardSleeves?.sets?.length ? comparaData.cardSleeves : game.cardSleeves,
+    cardSleeves: (comparaData?.cardSleeves?.sets?.length)
+      ? comparaData.cardSleeves
+      : (ludoData?.cardSleeves?.sets?.length 
+          ? ludoData.cardSleeves 
+          : (bggData?.cardSleeves?.sets?.length ? bggData.cardSleeves : game.cardSleeves)),
     value: marketValue,
     isPlayed: (game.isPlayed !== undefined || ludoData?.isPlayed !== undefined)
       ? ((finalType === 'Expansão' || ludoData?.isExpansion || (game as any).isExpansion) && ludoData?.isPlayed !== undefined

@@ -15,6 +15,7 @@ import { PlayedStatusChart } from './components/PlayedStatusChart';
 import { SleevesStockTab } from './components/SleevesStockTab';
 import { WhoGoesModal } from './components/WhoGoesModal';
 import type { GameData } from './types';
+import { isGameInCollection } from './utils/sleeveUtils';
 import { LoginScreen } from './components/LoginScreen';
 import './index.css';
 import './components.css';
@@ -43,6 +44,7 @@ function App() {
     fetchBGGDataForGames, 
     fetchLudoDataForGames, 
     fetchComparaDataForGames,
+    fetchSleevesForGames,
     isBatchUpdating,
     batchProgress,
     updatingGameIds,
@@ -458,13 +460,18 @@ function App() {
       <main>
         {activeMainTab === 'sleeves' ? (
           <SleevesStockTab
-            games={games}
+            games={games.filter(isGameInCollection)}
             stock={sleeveStock}
             onAddStockItem={addStockItem}
             onUpdateStockItem={updateStockItem}
             onDeleteStockItem={deleteStockItem}
             onAdjustQuantity={adjustQuantity}
             onClickGameDetails={handleClickDetails}
+            onFetchSleeves={fetchSleevesForGames}
+            isFetchingSleeves={isBatchUpdating}
+            fetchProgress={batchProgress}
+            onCancelFetchSleeves={cancelBatchUpdate}
+            onUpdateGameSleeves={(gameId, cardSleeves) => editGame(gameId, { cardSleeves })}
           />
         ) : games.length === 0 ? (
           <div className="glass-panel" style={{textAlign: 'center', padding: '6rem 2rem'}}>

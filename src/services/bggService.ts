@@ -1,5 +1,7 @@
 import { XMLParser } from 'fast-xml-parser';
 import { searchBggIdViaCompara } from './comparaService.ts';
+import type { CardSleevesData, CardSleeveSet } from '../types/index.ts';
+import { getCardSleeveSizeName, formatCardSleeveDimensions } from '../utils/sleeveUtils.ts';
 
 const xmlParser = new XMLParser({
   ignoreAttributes: false,
@@ -29,6 +31,7 @@ export interface BGGParsedData {
     summary: string;
   };
   description?: string;
+  cardSleeves?: CardSleevesData;
 }
 
 export function parseBGGThingXml(xmlText: string): BGGParsedData | null {
@@ -241,6 +244,9 @@ export async function fetchBGGGeekitems(bggId: string): Promise<BGGParsedData | 
         .trim();
     }
 
+    const combinedText = `${item.wiki || ''}\n${item.description || ''}`;
+    const cardSleeves = parseBGGSleeves(combinedText, String(bggId)) || undefined;
+
     return {
       bggId: String(bggId),
       name: item.name,
@@ -255,9 +261,196 @@ export async function fetchBGGGeekitems(bggId: string): Promise<BGGParsedData | 
       mechanics: mechanics.length > 0 ? mechanics : undefined,
       honors: honors.length > 0 ? honors : undefined,
       description: cleanDesc,
+      cardSleeves,
     };
   } catch (e) {
     console.error(`Erro ao consultar fallback JSON BGG geekitems para ID ${bggId}:`, e);
+    return null;
+  }
+}
+
+/**
+ * Parser de Sleeves do BoardGameGeek a partir da Wiki e Descrição do Jogo
+ */
+export function parseBGGSleeves(text: string, bggId: string): CardSleevesData | null {
+  if (!text || !text.trim()) return null;
+
+  const clean = text
+    .replace(/<br\s*[\/]?>/gi, '\n')
+    .replace(/<\/li>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&times;/gi, 'x')
+    .replace(/&#10;/gi, '\n')
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, '&')
+    .replace(/&nbsp;/gi, ' ');
+
+  const rawSets: CardSleeveSet[] = [];
+
+  function normalizeName(nameHint: string | null | undefined, w: number, h: number): string {
+    const sizeName = getCardSleeveSizeName(w, h);
+    if (sizeName && sizeName !== 'Especial') {
+      return `${sizeName} (${formatCardSleeveDimensions(w, h)})`;
+    }
+    if (nameHint) {
+      const lower = nameHint.toLowerCase();
+      if (lower.includes('standard') || lower.includes('padrão')) return `Padrão (${formatCardSleeveDimensions(w, h)})`;
+      if (lower.includes('mini euro')) return `Mini Euro (${formatCardSleeveDimensions(w, h)})`;
+      if (lower.includes('euro')) return `Euro (${formatCardSleeveDimensions(w, h)})`;
+      if (lower.includes('mini usa') || lower.includes('mini american')) return `Mini USA (${formatCardSleeveDimensions(w, h)})`;
+      if (lower.includes('tarot')) return `Tarot (${formatCardSleeveDimensions(w, h)})`;
+      if (lower.includes('square') || lower.includes('quadrado')) return `Quadrado (${formatCardSleeveDimensions(w, h)})`;
+    }
+    return formatCardSleeveDimensions(w, h);
+  }
+
+  function getStandardDim(typeName: string): { w: number; h: number } | null {
+    const l = typeName.toLowerCase();
+    if (l.includes('mini euro')) return { w: 45, h: 68 };
+    if (l.includes('standard european') || l.includes('euro')) return { w: 59, h: 92 };
+    if (l.includes('mini usa') || l.includes('mini american')) return { w: 41, h: 63 };
+    if (l.includes('standard usa') || l.includes('usa')) return { w: 56, h: 87 };
+    if (l.includes('tarot')) return { w: 70, h: 120 };
+    if (l.includes('square') || l.includes('quadrado')) return { w: 70, h: 70 };
+    if (l.includes('standard') || l.includes('padrão')) return { w: 63.5, h: 88 };
+    return null;
+  }
+
+  // Padrão 1: Quantidade + Dimensão: "170 unique bird cards (57x87mm)", "157 cards @ 65mm X 100mm", "98 cards - 62.5x88 mm", "76 Cards [63,5x88 mm]", "144 Illustrated cards (44x88mm)"
+  const p1 = /(\d+)\s*(?:unique\s+)?(?:[a-zA-Z\s]{0,25})cards?[\s@\-\:\(\[]+(\d+(?:[.,]\d+)?)\s*(?:mm)?\s*(?:x|\*)\s*(\d+(?:[.,]\d+)?)\s*mm/gi;
+  let m: RegExpExecArray | null;
+  while ((m = p1.exec(clean)) !== null) {
+    const qty = parseInt(m[1], 10);
+    const w = parseFloat(m[2].replace(',', '.'));
+    const h = parseFloat(m[3].replace(',', '.'));
+    if (qty > 0 && w >= 30 && w <= 200 && h >= 30 && h <= 200) {
+      const minDim = Math.min(w, h);
+      const maxDim = Math.max(w, h);
+      rawSets.push({
+        name: normalizeName(null, minDim, maxDim),
+        quantity: qty,
+        width: minDim,
+        height: maxDim,
+        sizeName: getCardSleeveSizeName(minDim, maxDim),
+      });
+    }
+  }
+
+  // Padrão 2: Dimensão seguido de Quantidade: "(70 x 70mm) for 40 cards", "63x88 mm (Standard Gaming Cards) 31 cards", "(45 x 68 mm) for 200 cards"
+  const p2 = /(\d+(?:[.,]\d+)?)\s*(?:mm)?\s*(?:x|\*)\s*(\d+(?:[.,]\d+)?)\s*mm[\s\S]{0,35}?(\d+)\s*cards?/gi;
+  while ((m = p2.exec(clean)) !== null) {
+    const w = parseFloat(m[1].replace(',', '.'));
+    const h = parseFloat(m[2].replace(',', '.'));
+    const qty = parseInt(m[3], 10);
+    if (qty > 0 && w >= 30 && w <= 200 && h >= 30 && h <= 200) {
+      const minDim = Math.min(w, h);
+      const maxDim = Math.max(w, h);
+      if (!rawSets.some(s => s.quantity === qty && Math.abs(s.width - minDim) < 2)) {
+        rawSets.push({
+          name: normalizeName(null, minDim, maxDim),
+          quantity: qty,
+          width: minDim,
+          height: maxDim,
+          sizeName: getCardSleeveSizeName(minDim, maxDim),
+        });
+      }
+    }
+  }
+
+  // Padrão 3: Formato BGG Wiki padrão: "233 cards / Standard", "90 cards / Standard", "50 cards / Tarot", "100 cards / Mini Euro"
+  const p3 = /(\d+)\s*cards?\s*(?:\/|@|;|-)\s*(Standard|Mini Euro(?:pean)?|Standard European|Euro(?:pean)?|Tarot|Mini USA?|Standard USA|Square)/gi;
+  while ((m = p3.exec(clean)) !== null) {
+    const qty = parseInt(m[1], 10);
+    const typeName = m[2];
+    const stdDim = getStandardDim(typeName);
+    if (qty > 0 && stdDim) {
+      if (!rawSets.some(s => s.quantity === qty)) {
+        rawSets.push({
+          name: normalizeName(typeName, stdDim.w, stdDim.h),
+          quantity: qty,
+          width: stdDim.w,
+          height: stdDim.h,
+          sizeName: getCardSleeveSizeName(stdDim.w, stdDim.h),
+        });
+      }
+    }
+  }
+
+  // Padrão 4: Sleeves listados com @: "Sleeves 50 @ 70 x 110mm ... 54 @ 57 x 87mm ... 42 @ 44 X 67mm"
+  const p4 = /(\d+)\s*@\s*(\d+(?:[.,]\d+)?)\s*(?:mm)?\s*(?:x|\*)\s*(\d+(?:[.,]\d+)?)\s*mm/gi;
+  while ((m = p4.exec(clean)) !== null) {
+    const qty = parseInt(m[1], 10);
+    const w = parseFloat(m[2].replace(',', '.'));
+    const h = parseFloat(m[3].replace(',', '.'));
+    if (qty > 0 && w >= 30 && w <= 200 && h >= 30 && h <= 200) {
+      const minDim = Math.min(w, h);
+      const maxDim = Math.max(w, h);
+      if (!rawSets.some(s => s.quantity === qty && Math.abs(s.width - minDim) < 2)) {
+        rawSets.push({
+          name: normalizeName(null, minDim, maxDim),
+          quantity: qty,
+          width: minDim,
+          height: maxDim,
+          sizeName: getCardSleeveSizeName(minDim, maxDim),
+        });
+      }
+    }
+  }
+
+  if (rawSets.length === 0) return null;
+
+  // Consolidação de conjuntos com dimensões idênticas ou aproximadas
+  const consolidated: CardSleeveSet[] = [];
+  for (const s of rawSets) {
+    const existing = consolidated.find(c => Math.abs(c.width - s.width) <= 1.5 && Math.abs(c.height - s.height) <= 1.5);
+    if (existing) {
+      existing.quantity += s.quantity;
+    } else {
+      consolidated.push({ ...s });
+    }
+  }
+
+  return {
+    source: 'BoardGameGeek',
+    sourceUrl: `https://boardgamegeek.com/boardgame/${bggId}`,
+    sets: consolidated
+  };
+}
+
+/**
+ * Consulta dedicada de sleeves via BGG (API Geekitems / JSON)
+ */
+export async function fetchBGGSleeves(
+  bggId?: string,
+  gameName?: string,
+  token?: string
+): Promise<CardSleevesData | null> {
+  let resolvedId = bggId;
+  if (!resolvedId && gameName) {
+    resolvedId = (await searchBggIdViaCompara(gameName)) || (await searchBGGId(gameName, { token })) || undefined;
+  }
+  if (!resolvedId) return null;
+
+  try {
+    const url = `https://api.geekdo.com/api/geekitems?objectid=${resolvedId}&objecttype=thing`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      const altRes = await fetch(`https://boardgamegeek.com/api/geekitems?objectid=${resolvedId}&objecttype=thing`);
+      if (!altRes.ok) return null;
+      const altJson = await altRes.json();
+      const combined = `${altJson.item?.wiki || ''}\n${altJson.item?.description || ''}`;
+      return parseBGGSleeves(combined, resolvedId);
+    }
+
+    const json = await res.json();
+    const item = json.item;
+    if (!item) return null;
+
+    const combined = `${item.wiki || ''}\n${item.description || ''}`;
+    return parseBGGSleeves(combined, resolvedId);
+  } catch (e) {
+    console.error(`Erro ao buscar sleeves do BGG para ID ${resolvedId}:`, e);
     return null;
   }
 }

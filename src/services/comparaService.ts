@@ -5,6 +5,8 @@ export interface ComparaPriceData {
   retailPrice?: number; // Menor preço de varejo (lojas novas)
   usedPrice?: number; // Estimativa de mercado de usados
   cardSleeves?: CardSleevesData; // Informações de sleeves necessárias para o jogo
+  bggId?: string;
+  comparaId?: number;
 }
 
 const FORBIDDEN_ACCESSORIES = [
@@ -89,10 +91,15 @@ export function parseComparaPrices(product: any): ComparaPriceData {
     sets,
   } : undefined;
 
+  const bggId = product.bgg_id ? String(product.bgg_id) : undefined;
+  const comparaId = product.id ? Number(product.id) : undefined;
+
   return {
     retailPrice,
     usedPrice,
     cardSleeves,
+    bggId,
+    comparaId,
   };
 }
 
@@ -103,14 +110,17 @@ export async function fetchComparaJogosData(
 ): Promise<ComparaPriceData | null> {
   const maxRetries = options.maxRetries ?? 5;
   const bggIdInt = bggId ? parseInt(bggId, 10) : 0;
+  const normalizeUnaccented = (s: string) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+  const unaccented = normalizeUnaccented(gameName);
 
   // Consulta preços e dados oficiais de cartas/sleeves
   const query = `
-    query GetGamePricesAndSleeves($nameExact: String!, $nameLike: String!, $bggId: Int!) {
+    query GetGamePricesAndSleeves($nameExact: String!, $nameUnaccented: String!, $nameLike: String!, $bggId: Int!) {
       byBggId: product(where: {bgg_id: {_eq: $bggId}}, limit: 1) {
         id
         name
         slug
+        bgg_id
         product_price { min_price }
         sleeves {
           id
@@ -135,6 +145,32 @@ export async function fetchComparaJogosData(
         id
         name
         slug
+        bgg_id
+        product_price { min_price }
+        sleeves {
+          id
+          name
+          width
+          height
+          quantity
+          sleeveProduct {
+            product {
+              name
+            }
+          }
+        }
+        prices {
+          name
+          price_to
+          available
+          store { name }
+        }
+      }
+      byUnaccented: product(where: {name_unaccented: {_ilike: $nameUnaccented}, type: {_in: [game, expansion]}}, limit: 1) {
+        id
+        name
+        slug
+        bgg_id
         product_price { min_price }
         sleeves {
           id
@@ -159,6 +195,7 @@ export async function fetchComparaJogosData(
         id
         name
         slug
+        bgg_id
         product_price { min_price }
         sleeves {
           id
@@ -184,7 +221,8 @@ export async function fetchComparaJogosData(
 
   const variables = {
     nameExact: gameName,
-    nameLike: `%${gameName}%`,
+    nameUnaccented: unaccented,
+    nameLike: `%${unaccented || gameName}%`,
     bggId: isNaN(bggIdInt) ? 0 : bggIdInt,
   };
 
@@ -220,8 +258,27 @@ export async function fetchComparaJogosData(
         product = json.data.byBggId[0];
       } else if (json.data.byNameExact && json.data.byNameExact.length > 0) {
         product = json.data.byNameExact[0];
+      } else if (json.data.byUnaccented && json.data.byUnaccented.length > 0) {
+        product = json.data.byUnaccented[0];
       } else if (json.data.byNameLike && json.data.byNameLike.length > 0) {
         product = json.data.byNameLike[0];
+      }
+
+      // Se encontrou o produto mas a lista de sleeves veio vazia, verifica se outro candidato possui sleeves
+      if (product && (!Array.isArray(product.sleeves) || product.sleeves.length === 0)) {
+        const allCandidates = [
+          ...(json.data.byBggId || []),
+          ...(json.data.byNameExact || []),
+          ...(json.data.byUnaccented || []),
+          ...(json.data.byNameLike || []),
+        ];
+        const withSleeves = allCandidates.find(c => Array.isArray(c.sleeves) && c.sleeves.length > 0);
+        if (withSleeves) {
+          product = {
+            ...product,
+            sleeves: withSleeves.sleeves,
+          };
+        }
       }
 
       if (product) {

@@ -426,7 +426,7 @@ export function EditGameModal({ game, isOpen, onClose, onSave, onDelete, onRefre
       finalSleeveType = summary.sleeveType;
 
       updatedCardSleeves = {
-        source: game.cardSleeves?.source || 'Compara Jogos',
+        source: 'Manual',
         sourceUrl: game.cardSleeves?.sourceUrl,
         sets: updatedSets,
       };

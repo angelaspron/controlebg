@@ -7,10 +7,11 @@ import {
   processBatchWithConcurrency, 
   type BatchProgress 
 } from '../services/batchProcessor';
-import { fetchBGGThingWithRetry, searchBGGId, DEFAULT_BGG_TOKEN } from '../services/bggService';
+import { fetchBGGThingWithRetry, searchBGGId, DEFAULT_BGG_TOKEN, fetchBGGSleeves } from '../services/bggService';
 import { fetchLudopediaData, parseIsPlayedFromLudo, isOwnedInLudopedia } from '../services/ludopediaService';
-import { fetchComparaJogosData } from '../services/comparaService';
+import { fetchComparaJogosData, searchBggIdViaCompara } from '../services/comparaService';
 import { matchesGameName, normalizeGameName } from '../utils/nameMatcher';
+import { isGameInCollection } from '../utils/sleeveUtils';
 
 const STORAGE_KEY = 'boardgame_manager_data';
 const MAPPING_STORAGE_KEY = 'boardgame_manager_mapping';
@@ -181,7 +182,7 @@ export function useCollection() {
             return {
               id: `local-${index}-${Date.now()}`,
               name,
-              status: mappedStatus || getVal(row, ['status', 'estado', 'situacao', 'situação']) || 'Desconhecido',
+              status: mappedStatus || getVal(row, ['status', 'estado', 'situacao', 'situação', 'tag', 'tags']) || 'Desconhecido',
               spend: toNumber(mappedSpend !== undefined ? mappedSpend : getVal(row, ['valor', 'grana', 'gasto', 'custo', 'valor pago', 'spend', 'preco', 'preço', 'price'])),
               type: detectedType,
               value: toNumber(mappedValue !== undefined ? mappedValue : getVal(row, ['valor mercado', 'valor de mercado', 'mercado', 'market value', 'market'])),
@@ -512,6 +513,158 @@ export function useCollection() {
     } catch (e: any) {
       if (e.message !== 'Operação cancelada pelo usuário') {
         console.error('Erro na atualização em lote Compara Jogos:', e);
+      }
+    } finally {
+      setIsBatchUpdating(false);
+      setBatchProgress(null);
+      setUpdatingGameIds(new Set());
+      abortControllerRef.current = null;
+    }
+  };
+
+  /**
+   * 4.1 Busca e sincronização dedicada de quantidade de sleeves por tipo via API (Compara Jogos / Ludopedia)
+   * Filtra estritamente apenas jogos pertencentes à coleção ativa (exclui jogos vendidos ou com tag VENDIDOS)
+   */
+  const fetchSleevesForGames = async (gameList: GameData[]) => {
+    const validGames = gameList.filter(isGameInCollection);
+    if (validGames.length === 0) return;
+
+    abortControllerRef.current = new AbortController();
+    setIsBatchUpdating(true);
+    setUpdatingGameIds(new Set());
+    const total = validGames.length;
+    let completed = 0;
+
+    try {
+      await processBatchWithConcurrency(
+        validGames,
+        5,
+        async (game) => {
+          setUpdatingGameIds(prev => new Set(prev).add(game.id));
+          setBatchProgress({
+            current: completed,
+            total,
+            percentage: Math.round((completed / total) * 100),
+            currentGameName: game.name,
+            activeApi: 'Compara Jogos / Ludopedia / BGG (Sleeves por Tipo)',
+          });
+
+          // 1. Resolução de BGG ID se ausente
+          let bggId = game.bggId;
+          if (!bggId && game.name) {
+            bggId = (await searchBggIdViaCompara(game.name)) || (await searchBGGId(game.name, { token: bggToken })) || undefined;
+          }
+
+          // 2. Consulta PRIMÁRIA de sleeves via Compara Jogos
+          let priceData = await fetchComparaJogosData(game.name, bggId);
+
+          // 2.1 Fallback Compara Jogos com nome alternativo em português se disponível
+          if ((!priceData?.cardSleeves?.sets?.length) && (game as any).namePt && (game as any).namePt !== game.name) {
+            const fallbackData = await fetchComparaJogosData((game as any).namePt, bggId);
+            if (fallbackData?.cardSleeves?.sets?.length) {
+              priceData = { ...priceData, ...fallbackData };
+            }
+          }
+
+          let cardSleeves = priceData?.cardSleeves?.sets?.length ? priceData.cardSleeves : game.cardSleeves;
+          let resolvedLudoId = game.ludoId;
+
+          // 3. CONSULTA SECUNDÁRIA (Fallback): Se o Compara Jogos não encontrou sleeves, busca na API da Ludopedia
+          if (!cardSleeves?.sets?.length) {
+            setBatchProgress({
+              current: completed,
+              total,
+              percentage: Math.round((completed / total) * 100),
+              currentGameName: game.name,
+              activeApi: 'Ludopedia API (Fallback Secundário de Sleeves)',
+            });
+
+            const ludoData = await fetchLudopediaData(game.name, ludoToken, game.ludoId);
+
+            if (ludoData) {
+              if (ludoData.ludoId) resolvedLudoId = ludoData.ludoId;
+
+              // 3.1 Se a Ludopedia retornou dados de sleeves diretamente
+              if (ludoData.cardSleeves?.sets?.length) {
+                cardSleeves = ludoData.cardSleeves;
+              } else if (ludoData.bggId && ludoData.bggId !== bggId) {
+                // 3.2 Se a Ludopedia descobriu um BGG ID vinculado (ex: link_bgg) que o jogo não tinha,
+                // re-consulta o Compara Jogos com o BGG ID resolvido pela Ludopedia
+                bggId = ludoData.bggId;
+                const reCompara = await fetchComparaJogosData(ludoData.namePt || game.name, bggId);
+                if (reCompara?.cardSleeves?.sets?.length) {
+                  cardSleeves = reCompara.cardSleeves;
+                  priceData = { ...priceData, ...reCompara };
+                }
+              } else if (ludoData.namePt && ludoData.namePt !== game.name) {
+                // 3.3 Tenta Compara Jogos com o nome nacional oficial resolvido pela Ludopedia
+                const reComparaName = await fetchComparaJogosData(ludoData.namePt, bggId);
+                if (reComparaName?.cardSleeves?.sets?.length) {
+                  cardSleeves = reComparaName.cardSleeves;
+                  priceData = { ...priceData, ...reComparaName };
+                }
+              }
+            }
+          }
+
+          // 4. CONSULTA TERCIÁRIA (Fallback): Se Compara Jogos e Ludopedia não encontraram sleeves, consulta BGG
+          if (!cardSleeves?.sets?.length) {
+            setBatchProgress({
+              current: completed,
+              total,
+              percentage: Math.round((completed / total) * 100),
+              currentGameName: game.name,
+              activeApi: 'BGG API (Fallback Terciário de Sleeves)',
+            });
+
+            const bggSleeves = await fetchBGGSleeves(bggId, game.name, bggToken);
+            if (bggSleeves?.sets?.length) {
+              cardSleeves = bggSleeves;
+            }
+          }
+
+          if (priceData || cardSleeves) {
+            setGames(prev => prev.map(g => {
+              if (g.id !== game.id) return g;
+              let marketValue = g.value;
+              if (priceData?.retailPrice !== undefined && priceData.retailPrice > 0) {
+                marketValue = priceData.retailPrice;
+              } else if (priceData?.usedPrice !== undefined && priceData.usedPrice > 0) {
+                marketValue = priceData.usedPrice;
+              }
+
+              return {
+                ...g,
+                bggId: g.bggId || priceData?.bggId || bggId,
+                ludoId: g.ludoId || resolvedLudoId,
+                retailPrice: priceData?.retailPrice || g.retailPrice,
+                usedPrice: priceData?.usedPrice || g.usedPrice,
+                cardSleeves: cardSleeves?.sets?.length ? cardSleeves : g.cardSleeves,
+                value: marketValue,
+              };
+            }));
+          }
+
+          completed++;
+          setUpdatingGameIds(prev => {
+            const next = new Set(prev);
+            next.delete(game.id);
+            return next;
+          });
+          setBatchProgress({
+            current: completed,
+            total,
+            percentage: Math.round((completed / total) * 100),
+            currentGameName: game.name,
+            activeApi: 'Compara Jogos / Ludopedia / BGG (Sleeves por Tipo)',
+          });
+        },
+        abortControllerRef.current.signal
+      );
+    } catch (e: any) {
+      if (e.message !== 'Operação cancelada pelo usuário') {
+        console.error('Erro na busca de sleeves por tipo:', e);
       }
     } finally {
       setIsBatchUpdating(false);
@@ -1017,6 +1170,7 @@ export function useCollection() {
     fetchBGGDataForGames,
     fetchLudoDataForGames,
     fetchComparaDataForGames,
+    fetchSleevesForGames,
     // Coleções e CRUD
     processExcelUpload,
     fetchBGGCollection,
