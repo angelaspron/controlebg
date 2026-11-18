@@ -419,8 +419,8 @@ export function EditGameModal({ game, isOpen, onClose, onSave, onDelete, onRefre
           height: finalHeight,
           sizeName: finalSizeName,
           isSleeved: row.isSleeved,
-          sleeveBrand: row.isSleeved ? (finalB || undefined) : undefined,
-          sleeveType: row.isSleeved ? (row.type.trim() || undefined) : undefined,
+          sleeveBrand: finalB || undefined,
+          sleeveType: row.type.trim() || undefined,
         };
       });
 
@@ -446,8 +446,8 @@ export function EditGameModal({ game, isOpen, onClose, onSave, onDelete, onRefre
           height: finalHeight,
           quantity: row.quantity,
           isSleeved: row.isSleeved,
-          sleeveBrand: row.isSleeved ? (finalB || undefined) : undefined,
-          sleeveType: row.isSleeved ? (row.type.trim() || undefined) : undefined,
+          sleeveBrand: finalB || undefined,
+          sleeveType: row.type.trim() || undefined,
         };
       });
 

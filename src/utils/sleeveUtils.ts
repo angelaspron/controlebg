@@ -165,9 +165,10 @@ export function summarizeGameSleeves(
 
   const sleevedList = sets.filter(s => Boolean(s.isSleeved));
   const isSleeved = sleevedList.length > 0;
+  const listToInspect = sleevedList.length > 0 ? sleevedList : sets;
 
-  const brands = Array.from(new Set(sleevedList.map(s => s.sleeveBrand?.trim()).filter(Boolean) as string[]));
-  const types = Array.from(new Set(sleevedList.map(s => s.sleeveType?.trim()).filter(Boolean) as string[]));
+  const brands = Array.from(new Set(listToInspect.map(s => s.sleeveBrand?.trim()).filter(Boolean) as string[]));
+  const types = Array.from(new Set(listToInspect.map(s => s.sleeveType?.trim()).filter(Boolean) as string[]));
 
   return {
     isSleeved,

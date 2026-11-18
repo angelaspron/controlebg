@@ -309,8 +309,8 @@ export function GameDetailsModal({ game, isOpen, onClose, onEdit, onRefresh, onS
         sizeName: finalSizeName,
         sleeveProductName: row.sleeveProductName,
         isSleeved: row.isSleeved,
-        sleeveBrand: row.isSleeved ? (finalBrand || undefined) : undefined,
-        sleeveType: row.isSleeved ? (row.type.trim() || undefined) : undefined,
+        sleeveBrand: finalBrand || undefined,
+        sleeveType: row.type.trim() || undefined,
       };
     });
 
@@ -336,8 +336,8 @@ export function GameDetailsModal({ game, isOpen, onClose, onEdit, onRefresh, onS
         height: finalHeight,
         quantity: row.quantity,
         isSleeved: row.isSleeved,
-        sleeveBrand: row.isSleeved ? (finalBrand || undefined) : undefined,
-        sleeveType: row.isSleeved ? (row.type.trim() || undefined) : undefined,
+        sleeveBrand: finalBrand || undefined,
+        sleeveType: row.type.trim() || undefined,
       };
     });
 
@@ -982,68 +982,66 @@ export function GameDetailsModal({ game, isOpen, onClose, onEdit, onRefresh, onS
                             </span>
                           </label>
 
-                          {set.isSleeved && (
-                            <div className="board-sleeve-fields" style={{ marginTop: '0.6rem' }}>
-                              <label>
-                                Marca usada neste tamanho:
-                                <select
+                          <div className="board-sleeve-fields" style={{ marginTop: '0.6rem' }}>
+                            <label>
+                              Marca do Sleeve:
+                              <select
+                                className="search-input"
+                                style={{ padding: '0.4rem 0.65rem', fontSize: '0.82rem' }}
+                                value={set.isCustomBrand ? '__other__' : set.brand}
+                                onChange={e => handleChangeBrand(set.id, e.target.value)}
+                              >
+                                <option value="">(Selecione a marca)</option>
+                                {KNOWN_SLEEVE_BRANDS.map(b => (
+                                  <option key={b} value={b}>{b}</option>
+                                ))}
+                                <option value="__other__">Outra marca (digitar)</option>
+                              </select>
+                              {set.isCustomBrand && (
+                                <input
+                                  type="text"
                                   className="search-input"
-                                  style={{ padding: '0.4rem 0.65rem', fontSize: '0.82rem' }}
-                                  value={set.isCustomBrand ? '__other__' : set.brand}
-                                  onChange={e => handleChangeBrand(set.id, e.target.value)}
-                                >
-                                  <option value="">Selecione a marca...</option>
-                                  {KNOWN_SLEEVE_BRANDS.map(b => (
-                                    <option key={b} value={b}>{b}</option>
-                                  ))}
-                                  <option value="__other__">Outra marca (digitar)</option>
-                                </select>
-                                {set.isCustomBrand && (
-                                  <input
-                                    type="text"
-                                    className="search-input"
-                                    style={{ padding: '0.4rem 0.65rem', fontSize: '0.82rem', marginTop: '0.25rem' }}
-                                    placeholder="Digite a marca..."
-                                    value={set.customBrand}
-                                    maxLength={60}
-                                    onChange={e => handleChangeCustomBrand(set.id, e.target.value)}
-                                  />
-                                )}
-                              </label>
+                                  style={{ padding: '0.4rem 0.65rem', fontSize: '0.82rem', marginTop: '0.25rem' }}
+                                  placeholder="Digite a marca..."
+                                  value={set.customBrand}
+                                  maxLength={60}
+                                  onChange={e => handleChangeCustomBrand(set.id, e.target.value)}
+                                />
+                              )}
+                            </label>
 
-                              <label>
-                                Subtipo do Sleeve:
-                                <select
+                            <label>
+                              Subtipo do Sleeve:
+                              <select
+                                className="search-input"
+                                style={{ padding: '0.4rem 0.65rem', fontSize: '0.82rem' }}
+                                value={SLEEVE_SUBTYPES.includes(set.type as any) ? set.type : (set.type ? '__other__' : 'Normal')}
+                                onChange={e => {
+                                  if (e.target.value === '__other__') {
+                                    handleChangeType(set.id, set.type && !SLEEVE_SUBTYPES.includes(set.type as any) ? set.type : '');
+                                  } else {
+                                    handleChangeType(set.id, e.target.value);
+                                  }
+                                }}
+                              >
+                                {SLEEVE_SUBTYPES.map(st => (
+                                  <option key={st} value={st}>{st}</option>
+                                ))}
+                                <option value="__other__">Outro subtipo...</option>
+                              </select>
+                              {(!SLEEVE_SUBTYPES.includes(set.type as any) && set.type !== undefined) && (
+                                <input
+                                  type="text"
                                   className="search-input"
-                                  style={{ padding: '0.4rem 0.65rem', fontSize: '0.82rem' }}
-                                  value={SLEEVE_SUBTYPES.includes(set.type as any) ? set.type : (set.type ? '__other__' : 'Normal')}
-                                  onChange={e => {
-                                    if (e.target.value === '__other__') {
-                                      handleChangeType(set.id, set.type && !SLEEVE_SUBTYPES.includes(set.type as any) ? set.type : '');
-                                    } else {
-                                      handleChangeType(set.id, e.target.value);
-                                    }
-                                  }}
-                                >
-                                  {SLEEVE_SUBTYPES.map(st => (
-                                    <option key={st} value={st}>{st}</option>
-                                  ))}
-                                  <option value="__other__">Outro subtipo...</option>
-                                </select>
-                                {(!SLEEVE_SUBTYPES.includes(set.type as any) && set.type !== undefined) && (
-                                  <input
-                                    type="text"
-                                    className="search-input"
-                                    style={{ padding: '0.4rem 0.65rem', fontSize: '0.82rem', marginTop: '0.25rem' }}
-                                    placeholder="Digite o subtipo (ex: Matte, Fit)"
-                                    value={set.type}
-                                    maxLength={50}
-                                    onChange={e => handleChangeType(set.id, e.target.value)}
-                                  />
-                                )}
-                              </label>
-                            </div>
-                          )}
+                                  style={{ padding: '0.4rem 0.65rem', fontSize: '0.82rem', marginTop: '0.25rem' }}
+                                  placeholder="Digite o subtipo (ex: Matte, Fit)"
+                                  value={set.type}
+                                  maxLength={50}
+                                  onChange={e => handleChangeType(set.id, e.target.value)}
+                                />
+                              )}
+                            </label>
+                          </div>
                         </div>
                       )}
                     </div>

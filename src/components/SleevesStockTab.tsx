@@ -336,8 +336,8 @@ export function SleevesStockTab({
         height,
         sizeName: sizeName !== 'Especial' ? sizeName : formatCardSleeveDimensions(width, height),
         isSleeved: Boolean(row.isSleeved),
-        sleeveBrand: row.isSleeved ? (finalBrand || undefined) : undefined,
-        sleeveType: row.isSleeved ? (finalType || undefined) : undefined,
+        sleeveBrand: finalBrand || undefined,
+        sleeveType: finalType || undefined,
       };
     });
 
@@ -2187,6 +2187,69 @@ export function SleevesStockTab({
                             </div>
                           </>
                         )}
+
+                        {/* Marca do Sleeve */}
+                        <div>
+                          <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
+                            Marca do Sleeve:
+                          </label>
+                          <select
+                            className="search-input"
+                            style={{ width: '100%', padding: '0.45rem 0.65rem', fontSize: '0.82rem' }}
+                            value={row.isCustomBrand ? '__other__' : (row.brand || '')}
+                            onChange={e => handleUpdateRowBrand(row.id, e.target.value)}
+                          >
+                            <option value="">(Selecione a marca)</option>
+                            {KNOWN_SLEEVE_BRANDS.map(b => (
+                              <option key={b} value={b}>{b}</option>
+                            ))}
+                            <option value="__other__">Outra marca...</option>
+                          </select>
+                          {row.isCustomBrand && (
+                            <input
+                              type="text"
+                              className="search-input"
+                              style={{ width: '100%', padding: '0.4rem 0.65rem', fontSize: '0.82rem', marginTop: '0.25rem' }}
+                              placeholder="Digite a marca..."
+                              value={row.customBrand}
+                              onChange={e => handleUpdateRowCustomBrand(row.id, e.target.value)}
+                            />
+                          )}
+                        </div>
+
+                        {/* Subtipo do Sleeve */}
+                        <div>
+                          <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
+                            Subtipo do Sleeve:
+                          </label>
+                          <select
+                            className="search-input"
+                            style={{ width: '100%', padding: '0.45rem 0.65rem', fontSize: '0.82rem' }}
+                            value={SLEEVE_SUBTYPES.includes(row.type as any) ? row.type : (row.type ? '__other__' : 'Normal')}
+                            onChange={e => {
+                              if (e.target.value === '__other__') {
+                                handleUpdateRowType(row.id, row.type && !SLEEVE_SUBTYPES.includes(row.type as any) ? row.type : '');
+                              } else {
+                                handleUpdateRowType(row.id, e.target.value);
+                              }
+                            }}
+                          >
+                            {SLEEVE_SUBTYPES.map(st => (
+                              <option key={st} value={st}>{st}</option>
+                            ))}
+                            <option value="__other__">Outro subtipo...</option>
+                          </select>
+                          {(!SLEEVE_SUBTYPES.includes(row.type as any) && row.type !== undefined) && (
+                            <input
+                              type="text"
+                              className="search-input"
+                              style={{ width: '100%', padding: '0.4rem 0.65rem', fontSize: '0.82rem', marginTop: '0.25rem' }}
+                              placeholder="Digite o subtipo (ex: Matte, Fit)"
+                              value={row.type}
+                              onChange={e => handleUpdateRowType(row.id, e.target.value)}
+                            />
+                          )}
+                        </div>
                       </div>
 
                       {/* Status de Sleevado */}
@@ -2201,81 +2264,6 @@ export function SleevesStockTab({
                           <span>Este tipo de carta já está sleevado no meu jogo</span>
                         </label>
                       </div>
-
-                      {/* Marca e Subtipo quando sleevado */}
-                      {row.isSleeved && (
-                        <div style={{
-                          display: 'grid',
-                          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-                          gap: '0.65rem',
-                          marginTop: '0.35rem',
-                          padding: '0.65rem',
-                          background: 'rgba(0, 0, 0, 0.25)',
-                          borderRadius: '8px',
-                          border: '1px solid rgba(255, 255, 255, 0.05)'
-                        }}>
-                          <div>
-                            <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
-                              Marca do Sleeve:
-                            </label>
-                            <select
-                              className="search-input"
-                              style={{ width: '100%', padding: '0.45rem 0.65rem', fontSize: '0.82rem' }}
-                              value={row.isCustomBrand ? '__other__' : (row.brand || '')}
-                              onChange={e => handleUpdateRowBrand(row.id, e.target.value)}
-                            >
-                              <option value="">(Selecione a marca)</option>
-                              {KNOWN_SLEEVE_BRANDS.map(b => (
-                                <option key={b} value={b}>{b}</option>
-                              ))}
-                              <option value="__other__">Outra marca...</option>
-                            </select>
-                            {row.isCustomBrand && (
-                              <input
-                                type="text"
-                                className="search-input"
-                                style={{ width: '100%', padding: '0.4rem 0.65rem', fontSize: '0.82rem', marginTop: '0.25rem' }}
-                                placeholder="Digite a marca..."
-                                value={row.customBrand}
-                                onChange={e => handleUpdateRowCustomBrand(row.id, e.target.value)}
-                              />
-                            )}
-                          </div>
-
-                          <div>
-                            <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
-                              Subtipo do Sleeve:
-                            </label>
-                            <select
-                              className="search-input"
-                              style={{ width: '100%', padding: '0.45rem 0.65rem', fontSize: '0.82rem' }}
-                              value={SLEEVE_SUBTYPES.includes(row.type as any) ? row.type : (row.type ? '__other__' : 'Normal')}
-                              onChange={e => {
-                                if (e.target.value === '__other__') {
-                                  handleUpdateRowType(row.id, row.type && !SLEEVE_SUBTYPES.includes(row.type as any) ? row.type : '');
-                                } else {
-                                  handleUpdateRowType(row.id, e.target.value);
-                                }
-                              }}
-                            >
-                              {SLEEVE_SUBTYPES.map(st => (
-                                <option key={st} value={st}>{st}</option>
-                              ))}
-                              <option value="__other__">Outro subtipo...</option>
-                            </select>
-                            {(!SLEEVE_SUBTYPES.includes(row.type as any) && row.type !== undefined) && (
-                              <input
-                                type="text"
-                                className="search-input"
-                                style={{ width: '100%', padding: '0.4rem 0.65rem', fontSize: '0.82rem', marginTop: '0.25rem' }}
-                                placeholder="Digite o subtipo (ex: Matte, Fit)"
-                                value={row.type}
-                                onChange={e => handleUpdateRowType(row.id, e.target.value)}
-                              />
-                            )}
-                          </div>
-                        </div>
-                      )}
                     </div>
                   ))}
                 </div>
