@@ -527,7 +527,7 @@ export function useCollection() {
    * Filtra estritamente apenas jogos pertencentes à coleção ativa (exclui jogos vendidos ou com tag VENDIDOS)
    */
   const fetchSleevesForGames = async (gameList: GameData[]) => {
-    const validGames = gameList.filter(isGameInCollection);
+    const validGames = gameList.filter(g => isGameInCollection(g) && !g.noCards);
     if (validGames.length === 0) return;
 
     abortControllerRef.current = new AbortController();
@@ -640,7 +640,7 @@ export function useCollection() {
                 ludoId: g.ludoId || resolvedLudoId,
                 retailPrice: priceData?.retailPrice || g.retailPrice,
                 usedPrice: priceData?.usedPrice || g.usedPrice,
-                cardSleeves: cardSleeves?.sets?.length ? cardSleeves : g.cardSleeves,
+                cardSleeves: g.noCards ? g.cardSleeves : (cardSleeves?.sets?.length ? cardSleeves : g.cardSleeves),
                 value: marketValue,
               };
             }));
@@ -1085,10 +1085,10 @@ export function useCollection() {
       'Tempo de Partida': g.playtime || '',
       'Jogadores Ideais': g.suggestedPlayers?.summary || '',
       'Prêmios': (g.honors || []).join('; '),
-      'Sleevado': g.isSleeved ? 'Sim' : 'Não',
+      'Sleevado': g.noCards ? 'Sem Cartas' : (g.isSleeved ? 'Sim' : 'Não'),
       'Marca Sleeve': g.sleeveBrand || '',
       'Tipo Sleeve': g.sleeveType || '',
-      'Sleeves Necessários': g.cardSleeves?.sets ? g.cardSleeves.sets.map(s => `${s.quantity}x ${s.sizeName || ''} (${s.width}x${s.height}mm)`).join('; ') : '',
+      'Sleeves Necessários': g.noCards ? 'Não possui cartas' : (g.cardSleeves?.sets ? g.cardSleeves.sets.map(s => `${s.quantity}x ${s.sizeName || ''} (${s.width}x${s.height}mm)`).join('; ') : ''),
     })));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Coleção");

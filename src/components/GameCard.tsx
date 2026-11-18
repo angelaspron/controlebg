@@ -230,7 +230,25 @@ export const GameCard = memo(function GameCard({
               {game.isPlayed ? '✔ Jogado' : 'Não Jogado'}
             </span>
           )}
-          {game.isSleeved ? (
+          {game.noCards ? (
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '3px',
+                padding: '1px 6px',
+                borderRadius: '6px',
+                fontSize: '0.72rem',
+                fontWeight: 500,
+                background: 'rgba(148, 163, 184, 0.12)',
+                color: '#94a3b8',
+                border: '1px solid rgba(148, 163, 184, 0.25)'
+              }}
+              title="Este jogo não possui cartas"
+            >
+              🚫 Sem cartas
+            </span>
+          ) : game.isSleeved ? (
             <span
               style={{
                 display: 'inline-flex',

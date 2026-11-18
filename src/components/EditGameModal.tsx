@@ -6,6 +6,7 @@ import { updateSingleGameParallel } from '../services/batchProcessor';
 import { 
   KNOWN_SLEEVE_BRANDS, 
   POPULAR_SLEEVE_MODELS, 
+  SLEEVE_SUBTYPES,
   parseModelDimensions, 
   formatCardSleeveDimensions, 
   summarizeGameSleeves 
@@ -55,6 +56,7 @@ export function EditGameModal({ game, isOpen, onClose, onSave, onDelete, onRefre
   const [yearPublished, setYearPublished] = useState('');
   const [rating, setRating] = useState('');
   const [ludoRating, setLudoRating] = useState('');
+  const [noCards, setNoCards] = useState(false);
   const [isSleeved, setIsSleeved] = useState(false);
   const [sleeveBrand, setSleeveBrand] = useState('');
   const [sleeveType, setSleeveType] = useState('');
@@ -79,6 +81,7 @@ export function EditGameModal({ game, isOpen, onClose, onSave, onDelete, onRefre
       setYearPublished(game.yearPublished ? String(game.yearPublished) : '');
       setRating(game.rating ? String(game.rating) : '');
       setLudoRating(game.ludoRating ? String(game.ludoRating) : '');
+      setNoCards(Boolean(game.noCards));
       setIsSleeved(Boolean(game.isSleeved));
       setSleeveBrand(game.sleeveBrand || '');
       setSleeveType(game.sleeveType || '');
@@ -334,7 +337,7 @@ export function EditGameModal({ game, isOpen, onClose, onSave, onDelete, onRefre
       brand: KNOWN_SLEEVE_BRANDS[0],
       isCustomBrand: false,
       customBrand: '',
-      type: 'Padrão',
+      type: 'Normal',
       isCustomAdded: true,
       isCustomModel: false,
       customModel: '',
@@ -365,6 +368,34 @@ export function EditGameModal({ game, isOpen, onClose, onSave, onDelete, onRefre
     let finalIsSleeved = Boolean(isSleeved);
     let finalSleeveBrand = isSleeved ? sleeveBrand.trim() : undefined;
     let finalSleeveType = isSleeved ? sleeveType.trim() : undefined;
+
+    if (noCards) {
+      onSave(game.id, {
+        name: name.trim(),
+        bggId: bggIdInput.trim() || undefined,
+        status: status.trim(),
+        isPlayed: Boolean(isPlayed),
+        spend: spend ? parseFloat(spend.replace(',', '.')) : 0,
+        type: type.trim(),
+        value: value ? parseFloat(value.replace(',', '.')) : 0,
+        soldValue: soldValue ? parseFloat(soldValue.replace(',', '.')) : 0,
+        minPlayers: minPlayers ? parseInt(minPlayers) : undefined,
+        maxPlayers: maxPlayers ? parseInt(maxPlayers) : undefined,
+        weight: roundedWeight,
+        yearPublished: yearPublished ? parseInt(yearPublished) : undefined,
+        rating: rating ? parseFloat(rating.replace(',', '.')) : undefined,
+        ludoRating: ludoRating ? parseFloat(ludoRating.replace(',', '.')) : undefined,
+        noCards: true,
+        isSleeved: false,
+        sleeveBrand: undefined,
+        sleeveType: undefined,
+        cardSleeves: { source: 'Manual', sourceUrl: game.cardSleeves?.sourceUrl, sets: [], noCards: true },
+        sleevesUsed: [],
+        thumbnail: currentThumbnail || game.thumbnail,
+      });
+      onClose();
+      return;
+    }
 
     if (editSleeveList.length > 0) {
       const updatedSets: CardSleeveSet[] = editSleeveList.map(row => {
@@ -448,6 +479,7 @@ export function EditGameModal({ game, isOpen, onClose, onSave, onDelete, onRefre
       yearPublished: yearPublished ? parseInt(yearPublished) : undefined,
       rating: rating ? parseFloat(rating.replace(',', '.')) : undefined,
       ludoRating: ludoRating ? parseFloat(ludoRating.replace(',', '.')) : undefined,
+      noCards: false,
       isSleeved: finalIsSleeved,
       sleeveBrand: finalSleeveBrand,
       sleeveType: finalSleeveType,
@@ -669,12 +701,64 @@ export function EditGameModal({ game, isOpen, onClose, onSave, onDelete, onRefre
               flexDirection: 'column',
               gap: '0.75rem',
               padding: '0.85rem 1.1rem',
-              background: isSleeved ? 'rgba(99, 102, 241, 0.12)' : 'rgba(255, 255, 255, 0.04)',
-              border: `1px solid ${isSleeved ? 'rgba(99, 102, 241, 0.4)' : 'rgba(255, 255, 255, 0.1)'}`,
+              background: noCards ? 'rgba(148, 163, 184, 0.08)' : (isSleeved ? 'rgba(99, 102, 241, 0.12)' : 'rgba(255, 255, 255, 0.04)'),
+              border: `1px solid ${noCards ? 'rgba(148, 163, 184, 0.25)' : (isSleeved ? 'rgba(99, 102, 241, 0.4)' : 'rgba(255, 255, 255, 0.1)')}`,
               borderRadius: '10px',
               transition: 'all 0.2s ease',
             }}
           >
+            {/* Opção para marcar que o jogo não possui cartas */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '0.55rem 0.8rem',
+                background: noCards ? 'rgba(148, 163, 184, 0.14)' : 'rgba(255, 255, 255, 0.03)',
+                border: `1px solid ${noCards ? 'rgba(148, 163, 184, 0.35)' : 'rgba(255, 255, 255, 0.08)'}`,
+                borderRadius: '8px',
+                cursor: 'pointer'
+              }}
+              onClick={() => {
+                const next = !noCards;
+                setNoCards(next);
+                if (next) setIsSleeved(false);
+              }}
+            >
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                <span style={{ fontWeight: 600, fontSize: '0.88rem', color: noCards ? '#f1f5f9' : '#cbd5e1', display: 'flex', alignItems: 'center', gap: '7px' }}>
+                  🚫 Este jogo não possui cartas
+                </span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                  Marque se o jogo utiliza apenas dados, blocos, peças ou miniaturas, sem cartas.
+                </span>
+              </div>
+              <input
+                type="checkbox"
+                checked={noCards}
+                onChange={e => {
+                  setNoCards(e.target.checked);
+                  if (e.target.checked) setIsSleeved(false);
+                }}
+                onClick={e => e.stopPropagation()}
+                style={{ width: '17px', height: '17px', accentColor: 'var(--accent)', cursor: 'pointer' }}
+              />
+            </div>
+
+            {noCards ? (
+              <div style={{
+                padding: '0.75rem',
+                background: 'rgba(148, 163, 184, 0.05)',
+                borderRadius: '8px',
+                fontSize: '0.82rem',
+                color: 'var(--text-muted)',
+                fontStyle: 'italic',
+                textAlign: 'center'
+              }}>
+                Jogo configurado como sem cartas. Não requer sleeves protetores nem gera pendências na coleção.
+              </div>
+            ) : (
+              <>
             <div 
               style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
               onClick={handleToggleGlobalSleeved}
@@ -895,15 +979,34 @@ export function EditGameModal({ game, isOpen, onClose, onSave, onDelete, onRefre
                       </div>
 
                       <div>
-                        <label style={{ ...labelStyle, marginBottom: '2px', fontSize: '0.75rem' }}>Tipo / Espessura</label>
-                        <input
-                          type="text"
-                          value={item.type}
-                          onChange={e => handleItemTypeChange(item.id, e.target.value)}
+                        <label style={{ ...labelStyle, marginBottom: '2px', fontSize: '0.75rem' }}>Subtipo do Sleeve</label>
+                        <select
+                          value={SLEEVE_SUBTYPES.includes(item.type as any) ? item.type : (item.type ? '__other__' : 'Normal')}
+                          onChange={e => {
+                            if (e.target.value === '__other__') {
+                              handleItemTypeChange(item.id, item.type && !SLEEVE_SUBTYPES.includes(item.type as any) ? item.type : '');
+                            } else {
+                              handleItemTypeChange(item.id, e.target.value);
+                            }
+                          }}
                           className="search-input"
-                          placeholder="Ex: Premium, Slim, Padrão"
                           style={{ width: '100%', fontSize: '0.8rem', padding: '4px 8px' }}
-                        />
+                        >
+                          {SLEEVE_SUBTYPES.map(st => (
+                            <option key={st} value={st}>{st}</option>
+                          ))}
+                          <option value="__other__">Outro subtipo...</option>
+                        </select>
+                        {(!SLEEVE_SUBTYPES.includes(item.type as any) && item.type !== undefined) && (
+                          <input
+                            type="text"
+                            value={item.type}
+                            onChange={e => handleItemTypeChange(item.id, e.target.value)}
+                            placeholder="Digite o subtipo (ex: Matte, Fit)"
+                            className="search-input"
+                            style={{ width: '100%', fontSize: '0.8rem', padding: '3px 6px', marginTop: '3px' }}
+                          />
+                        )}
                       </div>
                     </div>
                   </div>
@@ -934,6 +1037,8 @@ export function EditGameModal({ game, isOpen, onClose, onSave, onDelete, onRefre
                   <Plus size={15} /> Adicionar Tipos e Marcas de Sleeves
                 </button>
               </div>
+            )}
+              </>
             )}
           </div>
 

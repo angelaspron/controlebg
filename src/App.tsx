@@ -471,7 +471,13 @@ function App() {
             isFetchingSleeves={isBatchUpdating}
             fetchProgress={batchProgress}
             onCancelFetchSleeves={cancelBatchUpdate}
-            onUpdateGameSleeves={(gameId, cardSleeves) => editGame(gameId, { cardSleeves })}
+            onUpdateGameSleeves={(gameId, cardSleeves, extraUpdates) => {
+              const updates: Partial<GameData> = { ...extraUpdates };
+              if (cardSleeves !== undefined) {
+                updates.cardSleeves = cardSleeves;
+              }
+              editGame(gameId, updates);
+            }}
           />
         ) : games.length === 0 ? (
           <div className="glass-panel" style={{textAlign: 'center', padding: '6rem 2rem'}}>

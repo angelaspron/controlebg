@@ -22,12 +22,14 @@ import type { GameData, SleeveStockItem, CardSleevesData, CardSleeveSet } from '
 import { 
   KNOWN_SLEEVE_BRANDS, 
   POPULAR_SLEEVE_MODELS, 
+  SLEEVE_SUBTYPES,
   computeCollectionSleeveDemands,
   matchStockToDemand,
   isGameInCollection,
   getCardSleeveSizeName,
   formatCardSleeveDimensions,
   parseModelDimensions,
+  summarizeGameSleeves,
 } from '../utils/sleeveUtils';
 import '../components.css';
 
@@ -39,6 +41,10 @@ interface ManualSleeveRow {
   customWidth: number;
   customHeight: number;
   isSleeved: boolean;
+  brand: string;
+  isCustomBrand: boolean;
+  customBrand: string;
+  type: string;
 }
 
 interface SleevesStockTabProps {
@@ -59,7 +65,7 @@ interface SleevesStockTabProps {
     activeApi: string;
   } | null;
   onCancelFetchSleeves?: () => void;
-  onUpdateGameSleeves?: (gameId: string, cardSleeves: CardSleevesData) => void;
+  onUpdateGameSleeves?: (gameId: string, cardSleeves?: CardSleevesData, extraUpdates?: Partial<GameData>) => void;
 }
 
 export function SleevesStockTab({
@@ -83,7 +89,7 @@ export function SleevesStockTab({
   // Controle de Visualização das Necessidades da Coleção: Por Modelo vs Por Jogo
   const [demandsViewMode, setDemandsViewMode] = useState<'byModel' | 'byGame'>('byModel');
   const [demandSearchTerm, setDemandSearchTerm] = useState('');
-  const [demandFilterStatus, setDemandFilterStatus] = useState<'all' | 'pending' | 'sleeved' | 'missing_data'>('all');
+  const [demandFilterStatus, setDemandFilterStatus] = useState<'all' | 'pending' | 'sleeved' | 'no_cards' | 'missing_data'>('all');
 
   // Estado do Modal de Adicionar/Editar
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -95,7 +101,7 @@ export function SleevesStockTab({
   const [formBrandSelect, setFormBrandSelect] = useState(KNOWN_SLEEVE_BRANDS[0]);
   const [formCustomBrand, setFormCustomBrand] = useState('');
   const [formQuantity, setFormQuantity] = useState(100);
-  const [formType, setFormType] = useState('Padrão');
+  const [formType, setFormType] = useState('Normal');
   const [formNotes, setFormNotes] = useState('');
 
   // Expandir jogos de uma demanda
@@ -120,6 +126,7 @@ export function SleevesStockTab({
 
   // Estado do Modal de Inserção/Edição Manual de Sleeves por Jogo
   const [editingSleevesGame, setEditingSleevesGame] = useState<GameData | null>(null);
+  const [editGameNoCards, setEditGameNoCards] = useState(false);
   const [manualRows, setManualRows] = useState<ManualSleeveRow[]>([]);
 
   // Trava a rolagem do corpo da página enquanto um modal estiver aberto
@@ -135,6 +142,7 @@ export function SleevesStockTab({
 
   const handleOpenEditSleeves = (game: GameData) => {
     setEditingSleevesGame(game);
+    setEditGameNoCards(Boolean(game.noCards));
     const existingSets = (game.cardSleeves?.sets && game.cardSleeves.sets.length > 0)
       ? game.cardSleeves.sets
       : (game.sleevesUsed || []);
@@ -148,6 +156,10 @@ export function SleevesStockTab({
           return Math.abs(parsed.width - w) <= 0.8 && Math.abs(parsed.height - h) <= 1.5;
         });
 
+        const rawBrand = s.sleeveBrand || (game.isSleeved ? (game.sleeveBrand || '') : '');
+        const isKnown = KNOWN_SLEEVE_BRANDS.some(b => b.toLowerCase() === rawBrand.toLowerCase());
+        const rawType = s.sleeveType || (game.isSleeved ? (game.sleeveType || 'Normal') : 'Normal');
+
         return {
           id: `row-${idx}-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
           name: (s as any).name || (s.sizeName && s.sizeName !== 'Especial' ? s.sizeName : ''),
@@ -156,9 +168,14 @@ export function SleevesStockTab({
           customWidth: w,
           customHeight: h,
           isSleeved: s.isSleeved !== undefined ? Boolean(s.isSleeved) : Boolean(game.isSleeved),
+          brand: isKnown ? rawBrand : (rawBrand ? '__other__' : (KNOWN_SLEEVE_BRANDS[0] || 'Bucaneiros')),
+          isCustomBrand: Boolean(rawBrand && !isKnown),
+          customBrand: isKnown ? '' : rawBrand,
+          type: rawType || 'Normal',
         };
       }));
     } else {
+      const isKnown = KNOWN_SLEEVE_BRANDS.some(b => b.toLowerCase() === (game.sleeveBrand || '').toLowerCase());
       setManualRows([
         {
           id: `row-0-${Date.now()}`,
@@ -168,6 +185,10 @@ export function SleevesStockTab({
           customWidth: 63.5,
           customHeight: 88,
           isSleeved: Boolean(game.isSleeved),
+          brand: isKnown ? (game.sleeveBrand || '') : (game.sleeveBrand ? '__other__' : KNOWN_SLEEVE_BRANDS[0]),
+          isCustomBrand: Boolean(game.sleeveBrand && !isKnown),
+          customBrand: isKnown ? '' : (game.sleeveBrand || ''),
+          type: game.sleeveType || 'Normal',
         }
       ]);
     }
@@ -175,6 +196,7 @@ export function SleevesStockTab({
 
   const handleCloseEditSleeves = () => {
     setEditingSleevesGame(null);
+    setEditGameNoCards(false);
     setManualRows([]);
   };
 
@@ -190,6 +212,10 @@ export function SleevesStockTab({
         customWidth: defaultDim.width,
         customHeight: defaultDim.height,
         isSleeved: false,
+        brand: KNOWN_SLEEVE_BRANDS[0],
+        isCustomBrand: false,
+        customBrand: '',
+        type: 'Normal',
       }
     ]);
   };
@@ -234,15 +260,53 @@ export function SleevesStockTab({
     setManualRows(prev => prev.map(row => (row.id === id ? { ...row, isSleeved } : row)));
   };
 
+  const handleUpdateRowBrand = (id: string, brand: string) => {
+    setManualRows(prev => prev.map(row => {
+      if (row.id !== id) return row;
+      const isCustomBrand = brand === '__other__';
+      return {
+        ...row,
+        brand: isCustomBrand ? '__other__' : brand,
+        isCustomBrand,
+        customBrand: isCustomBrand ? row.customBrand : '',
+      };
+    }));
+  };
+
+  const handleUpdateRowCustomBrand = (id: string, customBrand: string) => {
+    setManualRows(prev => prev.map(row => (row.id === id ? { ...row, customBrand } : row)));
+  };
+
+  const handleUpdateRowType = (id: string, type: string) => {
+    setManualRows(prev => prev.map(row => (row.id === id ? { ...row, type } : row)));
+  };
+
   const handleSaveManualSleeves = () => {
     if (!editingSleevesGame) return;
 
+    if (editGameNoCards) {
+      if (onUpdateGameSleeves) {
+        onUpdateGameSleeves(
+          editingSleevesGame.id,
+          { source: 'Manual', sourceUrl: editingSleevesGame.cardSleeves?.sourceUrl, sets: [], noCards: true },
+          { noCards: true, isSleeved: false, sleeveBrand: undefined, sleeveType: undefined, sleevesUsed: [] }
+        );
+      }
+      handleCloseEditSleeves();
+      return;
+    }
+
     if (manualRows.length === 0) {
       if (onUpdateGameSleeves) {
-        onUpdateGameSleeves(editingSleevesGame.id, {
-          source: 'Manual',
-          sets: []
-        });
+        onUpdateGameSleeves(
+          editingSleevesGame.id,
+          {
+            source: 'Manual',
+            sets: [],
+            noCards: false
+          },
+          { noCards: false }
+        );
       }
       handleCloseEditSleeves();
       return;
@@ -262,6 +326,9 @@ export function SleevesStockTab({
         sizeName = getCardSleeveSizeName(width, height);
       }
 
+      const finalBrand = row.isCustomBrand ? row.customBrand.trim() : row.brand.trim();
+      const finalType = row.type.trim();
+
       return {
         name: row.name.trim() || undefined,
         quantity: Math.max(1, Number(row.quantity) || 1),
@@ -269,8 +336,12 @@ export function SleevesStockTab({
         height,
         sizeName: sizeName !== 'Especial' ? sizeName : formatCardSleeveDimensions(width, height),
         isSleeved: Boolean(row.isSleeved),
+        sleeveBrand: row.isSleeved ? (finalBrand || undefined) : undefined,
+        sleeveType: row.isSleeved ? (finalType || undefined) : undefined,
       };
     });
+
+    const summary = summarizeGameSleeves(sets);
 
     const newCardSleeves: CardSleevesData = {
       source: 'Manual',
@@ -278,25 +349,56 @@ export function SleevesStockTab({
         ? `https://boardgamegeek.com/boardgame/${editingSleevesGame.bggId}` 
         : editingSleevesGame.cardSleeves?.sourceUrl,
       sets,
+      noCards: false,
     };
 
     if (onUpdateGameSleeves) {
-      onUpdateGameSleeves(editingSleevesGame.id, newCardSleeves);
+      onUpdateGameSleeves(editingSleevesGame.id, newCardSleeves, {
+        noCards: false,
+        isSleeved: summary.isSleeved,
+        sleeveBrand: summary.sleeveBrand,
+        sleeveType: summary.sleeveType,
+      });
     }
 
     handleCloseEditSleeves();
   };
 
+  const handleToggleNoCardsQuick = (game: GameData) => {
+    if (!onUpdateGameSleeves) return;
+    const nextNoCards = !game.noCards;
+    if (nextNoCards) {
+      onUpdateGameSleeves(
+        game.id,
+        { source: 'Manual', sourceUrl: game.cardSleeves?.sourceUrl, sets: [], noCards: true },
+        { noCards: true, isSleeved: false, sleeveBrand: undefined, sleeveType: undefined, sleevesUsed: [] }
+      );
+    } else {
+      onUpdateGameSleeves(
+        game.id,
+        undefined,
+        { noCards: false }
+      );
+    }
+  };
+
   // Jogos com e sem dados de sleeves
   const gamesWithSleeves = useMemo(() => {
     return ownedGames.filter(g => 
-      (g.cardSleeves?.sets && g.cardSleeves.sets.length > 0) || 
-      (g.sleevesUsed && g.sleevesUsed.length > 0)
+      !g.noCards && (
+        (g.cardSleeves?.sets && g.cardSleeves.sets.length > 0) || 
+        (g.sleevesUsed && g.sleevesUsed.length > 0)
+      )
     );
+  }, [ownedGames]);
+
+  const gamesWithoutCards = useMemo(() => {
+    return ownedGames.filter(g => Boolean(g.noCards));
   }, [ownedGames]);
 
   const gamesWithoutSleeves = useMemo(() => {
     return ownedGames.filter(g => 
+      !g.noCards &&
       (!g.cardSleeves?.sets || g.cardSleeves.sets.length === 0) && 
       (!g.sleevesUsed || g.sleevesUsed.length === 0)
     );
@@ -354,6 +456,14 @@ export function SleevesStockTab({
 
       if (!matchesSearch) return false;
 
+      if (g.noCards) {
+        if (demandFilterStatus === 'no_cards') return true;
+        if (demandFilterStatus === 'all') return true;
+        return false;
+      }
+
+      if (demandFilterStatus === 'no_cards') return false;
+
       const hasSleevesData = Boolean(
         (g.cardSleeves?.sets && g.cardSleeves.sets.length > 0) ||
         (g.sleevesUsed && g.sleevesUsed.length > 0)
@@ -376,7 +486,7 @@ export function SleevesStockTab({
     const totalCardsInCollection = collectionDemands.reduce((sum, d) => sum + d.totalCards, 0);
     const neededCardsInCollection = collectionDemands.reduce((sum, d) => sum + d.neededCards, 0);
 
-    const sleevedGamesCount = ownedGames.filter(g => Boolean(g.isSleeved)).length;
+    const sleevedGamesCount = ownedGames.filter(g => !g.noCards && Boolean(g.isSleeved)).length;
 
     return {
       totalSleeves,
@@ -385,9 +495,10 @@ export function SleevesStockTab({
       totalCardsInCollection,
       neededCardsInCollection,
       totalOwnedGames: ownedGames.length,
+      gamesWithoutCardsCount: gamesWithoutCards.length,
       sleevedGamesCount,
     };
-  }, [stock, collectionDemands, ownedGames]);
+  }, [stock, collectionDemands, ownedGames, gamesWithoutCards]);
 
   // Marcas únicas presentes no estoque
   const stockBrands = useMemo(() => {
@@ -426,7 +537,7 @@ export function SleevesStockTab({
     setFormBrandSelect(KNOWN_SLEEVE_BRANDS[0]);
     setFormCustomBrand('');
     setFormQuantity(100);
-    setFormType('Padrão');
+    setFormType('Normal');
     setFormNotes('');
     setIsModalOpen(true);
   };
@@ -451,7 +562,7 @@ export function SleevesStockTab({
     }
 
     setFormQuantity(item.quantity);
-    setFormType(item.type || 'Padrão');
+    setFormType(item.type || 'Normal');
     setFormNotes(item.notes || '');
     setIsModalOpen(true);
   };
@@ -542,12 +653,13 @@ export function SleevesStockTab({
             Jogos Sleevados
           </div>
           <div style={{ fontSize: '1.9rem', fontWeight: 700, color: '#34d399' }}>
-            {stats.sleevedGamesCount} / {stats.totalOwnedGames}
+            {stats.sleevedGamesCount} / {Math.max(0, stats.totalOwnedGames - (stats.gamesWithoutCardsCount || 0))}
           </div>
           <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>
-            {stats.totalOwnedGames > 0 
-              ? `${Math.round((stats.sleevedGamesCount / stats.totalOwnedGames) * 100)}% da coleção protegida` 
+            {stats.totalOwnedGames - (stats.gamesWithoutCardsCount || 0) > 0 
+              ? `${Math.round((stats.sleevedGamesCount / (stats.totalOwnedGames - (stats.gamesWithoutCardsCount || 0))) * 100)}% da coleção c/ cartas` 
               : '0% protegido'}
+            {stats.gamesWithoutCardsCount > 0 && ` (${stats.gamesWithoutCardsCount} s/ cartas)`}
           </div>
         </div>
 
@@ -879,6 +991,11 @@ export function SleevesStockTab({
                   <span style={{ fontSize: '0.78rem', background: 'rgba(16, 185, 129, 0.15)', padding: '3px 9px', borderRadius: '6px', color: '#34d399', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
                     ✔ <strong>{gamesWithSleeves.length}</strong> com dados de sleeves
                   </span>
+                  {gamesWithoutCards.length > 0 && (
+                    <span style={{ fontSize: '0.78rem', background: 'rgba(148, 163, 184, 0.15)', padding: '3px 9px', borderRadius: '6px', color: '#cbd5e1', border: '1px solid rgba(148, 163, 184, 0.3)' }}>
+                      🚫 <strong>{gamesWithoutCards.length}</strong> não possuem cartas
+                    </span>
+                  )}
                   {gamesWithoutSleeves.length > 0 ? (
                     <span style={{ fontSize: '0.78rem', background: 'rgba(245, 158, 11, 0.15)', padding: '3px 9px', borderRadius: '6px', color: '#fbbf24', border: '1px solid rgba(245, 158, 11, 0.3)' }}>
                       ⏳ <strong>{gamesWithoutSleeves.length}</strong> pendentes de consulta
@@ -1035,7 +1152,10 @@ export function SleevesStockTab({
                 <option value="pending">Faltam Sleeves</option>
                 <option value="sleeved">100% Sleevados</option>
                 {demandsViewMode === 'byGame' && (
-                  <option value="missing_data">Sem Dados na API</option>
+                  <>
+                    <option value="no_cards">Não Possui Cartas</option>
+                    <option value="missing_data">Sem Dados na API</option>
+                  </>
                 )}
               </select>
             </div>
@@ -1330,7 +1450,11 @@ export function SleevesStockTab({
                             <span style={{ fontSize: '0.7rem', background: 'rgba(255,255,255,0.06)', padding: '1px 6px', borderRadius: '4px', color: '#94a3b8' }}>
                               {game.type || 'Base'}
                             </span>
-                            {hasSleeves && (
+                            {game.noCards ? (
+                              <span style={{ fontSize: '0.7rem', background: 'rgba(148, 163, 184, 0.15)', color: '#cbd5e1', border: '1px solid rgba(148, 163, 184, 0.3)', padding: '1px 6px', borderRadius: '4px', fontWeight: 500 }}>
+                                🚫 Sem cartas
+                              </span>
+                            ) : hasSleeves ? (
                               <>
                                 <span style={{ fontSize: '0.7rem', background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.3)', padding: '1px 6px', borderRadius: '4px', fontWeight: 600 }}>
                                   🃏 {totalCards} cartas
@@ -1374,7 +1498,7 @@ export function SleevesStockTab({
                                   );
                                 })()}
                               </>
-                            )}
+                            ) : null}
                           </div>
                         </div>
 
@@ -1410,7 +1534,46 @@ export function SleevesStockTab({
                       </div>
 
                       {/* Lista de Sleeves por Tipo do Jogo */}
-                      {hasSleeves ? (
+                      {game.noCards ? (
+                        <div style={{
+                          background: 'rgba(148, 163, 184, 0.08)',
+                          border: '1px solid rgba(148, 163, 184, 0.2)',
+                          padding: '0.65rem 0.85rem',
+                          borderRadius: '8px',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          gap: '0.5rem',
+                          flexWrap: 'wrap'
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ fontSize: '1rem' }}>🚫</span>
+                            <span style={{ fontSize: '0.8rem', color: '#cbd5e1', fontWeight: 500 }}>
+                              Este jogo não possui cartas (sem necessidade de sleeves)
+                            </span>
+                          </div>
+                          <div style={{ display: 'flex', gap: '6px' }}>
+                            <button
+                              type="button"
+                              className="btn"
+                              onClick={() => handleToggleNoCardsQuick(game)}
+                              style={{ padding: '0.3rem 0.65rem', fontSize: '0.75rem', color: '#94a3b8' }}
+                              title="Desmarcar status de 'Sem cartas' (o jogo possui cartas)"
+                            >
+                              Desmarcar
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-secondary"
+                              onClick={() => handleOpenEditSleeves(game)}
+                              style={{ padding: '0.3rem 0.65rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px' }}
+                            >
+                              <Pencil size={12} />
+                              Adicionar Cartas
+                            </button>
+                          </div>
+                        </div>
+                      ) : hasSleeves ? (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginTop: '0.2rem' }}>
                           <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                             Tipos de Sleeves Necessários:
@@ -1436,12 +1599,22 @@ export function SleevesStockTab({
                                 >
                                   <div style={{ minWidth: 0 }}>
                                     <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                      <span style={{ color: '#38bdf8' }}>{set.quantity}x</span>
-                                      <span>{sName}</span>
+                                       <span style={{ color: '#38bdf8' }}>{set.quantity}x</span>
+                                       <span>{sName}</span>
                                     </div>
-                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'flex', gap: '6px', marginTop: '1px' }}>
-                                      <span>{set.width} × {set.height} mm</span>
+                                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'flex', gap: '6px', marginTop: '1px', flexWrap: 'wrap', alignItems: 'center' }}>
+                                      <span>{set.width} x {set.height} mm</span>
                                       {(set as any).name && <span>• {(set as any).name}</span>}
+                                      {(set.sleeveBrand || (isSetSleeved && game.sleeveBrand)) && (
+                                        <span style={{ color: '#c7d2fe', background: 'rgba(99, 102, 241, 0.15)', padding: '1px 5px', borderRadius: '4px', fontSize: '0.68rem', fontWeight: 500 }}>
+                                          🏷️ {set.sleeveBrand || game.sleeveBrand}
+                                        </span>
+                                      )}
+                                      {(set.sleeveType || (isSetSleeved && game.sleeveType)) && (
+                                        <span style={{ color: '#fde68a', background: 'rgba(245, 158, 11, 0.15)', padding: '1px 5px', borderRadius: '4px', fontSize: '0.68rem', fontWeight: 500 }}>
+                                          ✨ {set.sleeveType || game.sleeveType}
+                                        </span>
+                                      )}
                                       {(set as any).sleeveProductName && <span>• {(set as any).sleeveProductName}</span>}
                                     </div>
                                   </div>
@@ -1478,7 +1651,15 @@ export function SleevesStockTab({
                           <span style={{ fontSize: '0.78rem', color: '#fcd34d' }}>
                             Sem dados de sleeves na API ainda
                           </span>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                            <button
+                              className="btn"
+                              onClick={() => handleToggleNoCardsQuick(game)}
+                              style={{ padding: '0.3rem 0.65rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px', borderColor: 'rgba(148, 163, 184, 0.4)', color: '#cbd5e1' }}
+                              title="Marcar que este jogo não possui cartas"
+                            >
+                              🚫 Não Possui Cartas
+                            </button>
                             <button
                               className="btn btn-secondary"
                               onClick={() => handleOpenEditSleeves(game)}
@@ -1645,13 +1826,13 @@ export function SleevesStockTab({
                 />
               </div>
 
-              {/* Tipo / Espessura */}
+              {/* Subtipo: Normal, Premium ou Slim */}
               <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '0.35rem' }}>
-                  Tipo / Espessura (opcional):
+                  Subtipo (Normal, Premium ou Slim):
                 </label>
                 <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.4rem', flexWrap: 'wrap' }}>
-                  {['Padrão', 'Premium', 'Slim', 'Matte', 'Extra Premium'].map(t => (
+                  {SLEEVE_SUBTYPES.map(t => (
                     <button
                       key={t}
                       type="button"
@@ -1660,10 +1841,11 @@ export function SleevesStockTab({
                         background: formType === t ? 'var(--accent)' : 'rgba(255,255,255,0.06)',
                         border: `1px solid ${formType === t ? 'var(--accent)' : 'rgba(255,255,255,0.1)'}`,
                         color: formType === t ? '#fff' : 'var(--text-muted)',
-                        padding: '2px 8px',
+                        padding: '3px 10px',
                         borderRadius: '6px',
-                        fontSize: '0.75rem',
-                        cursor: 'pointer'
+                        fontSize: '0.78rem',
+                        cursor: 'pointer',
+                        fontWeight: formType === t ? 600 : 400
                       }}
                     >
                       {t}
@@ -1674,7 +1856,7 @@ export function SleevesStockTab({
                   type="text"
                   className="search-input"
                   style={{ width: '100%' }}
-                  placeholder="Ex: Premium, Slim, Matte"
+                  placeholder="Ou informe um subtipo personalizado (ex: Normal, Premium, Slim)"
                   value={formType}
                   onChange={e => setFormType(e.target.value)}
                 />
@@ -1768,6 +1950,52 @@ export function SleevesStockTab({
               </button>
             </div>
 
+            {/* Opção Jogo não possui cartas */}
+            <div
+              style={{
+                background: editGameNoCards ? 'rgba(148, 163, 184, 0.15)' : 'rgba(255, 255, 255, 0.04)',
+                border: `1px solid ${editGameNoCards ? 'rgba(148, 163, 184, 0.4)' : 'rgba(255, 255, 255, 0.1)'}`,
+                borderRadius: '10px',
+                padding: '0.85rem 1rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                cursor: 'pointer'
+              }}
+              onClick={() => setEditGameNoCards(!editGameNoCards)}
+            >
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                <span style={{ fontWeight: 600, fontSize: '0.92rem', color: editGameNoCards ? '#f1f5f9' : '#cbd5e1', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  🚫 Este jogo não possui cartas
+                </span>
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                  Marque esta opção caso o jogo utilize apenas peças, tabuleiros, dados ou miniaturas, sem cartas.
+                </span>
+              </div>
+              <input
+                type="checkbox"
+                checked={editGameNoCards}
+                onChange={e => setEditGameNoCards(e.target.checked)}
+                onClick={e => e.stopPropagation()}
+                style={{ width: '18px', height: '18px', accentColor: 'var(--accent)', cursor: 'pointer' }}
+              />
+            </div>
+
+            {editGameNoCards ? (
+              <div style={{
+                padding: '1.5rem',
+                textAlign: 'center',
+                background: 'rgba(148, 163, 184, 0.06)',
+                border: '1px dashed rgba(148, 163, 184, 0.3)',
+                borderRadius: '10px',
+                color: 'var(--text-muted)',
+                fontSize: '0.88rem'
+              }}>
+                <span style={{ fontSize: '1.6rem', display: 'block', marginBottom: '0.5rem' }}>🚫</span>
+                Este jogo está configurado como <strong>Não possui cartas</strong>. Ao salvar, nenhuma demanda de sleeve será gerada e o jogo não constará nas pendências de consulta da coleção.
+              </div>
+            ) : (
+              <>
             {/* Origem e aviso */}
             <div style={{
               background: 'rgba(16, 185, 129, 0.1)',
@@ -1973,11 +2201,88 @@ export function SleevesStockTab({
                           <span>Este tipo de carta já está sleevado no meu jogo</span>
                         </label>
                       </div>
+
+                      {/* Marca e Subtipo quando sleevado */}
+                      {row.isSleeved && (
+                        <div style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                          gap: '0.65rem',
+                          marginTop: '0.35rem',
+                          padding: '0.65rem',
+                          background: 'rgba(0, 0, 0, 0.25)',
+                          borderRadius: '8px',
+                          border: '1px solid rgba(255, 255, 255, 0.05)'
+                        }}>
+                          <div>
+                            <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
+                              Marca do Sleeve:
+                            </label>
+                            <select
+                              className="search-input"
+                              style={{ width: '100%', padding: '0.45rem 0.65rem', fontSize: '0.82rem' }}
+                              value={row.isCustomBrand ? '__other__' : (row.brand || '')}
+                              onChange={e => handleUpdateRowBrand(row.id, e.target.value)}
+                            >
+                              <option value="">(Selecione a marca)</option>
+                              {KNOWN_SLEEVE_BRANDS.map(b => (
+                                <option key={b} value={b}>{b}</option>
+                              ))}
+                              <option value="__other__">Outra marca...</option>
+                            </select>
+                            {row.isCustomBrand && (
+                              <input
+                                type="text"
+                                className="search-input"
+                                style={{ width: '100%', padding: '0.4rem 0.65rem', fontSize: '0.82rem', marginTop: '0.25rem' }}
+                                placeholder="Digite a marca..."
+                                value={row.customBrand}
+                                onChange={e => handleUpdateRowCustomBrand(row.id, e.target.value)}
+                              />
+                            )}
+                          </div>
+
+                          <div>
+                            <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
+                              Subtipo do Sleeve:
+                            </label>
+                            <select
+                              className="search-input"
+                              style={{ width: '100%', padding: '0.45rem 0.65rem', fontSize: '0.82rem' }}
+                              value={SLEEVE_SUBTYPES.includes(row.type as any) ? row.type : (row.type ? '__other__' : 'Normal')}
+                              onChange={e => {
+                                if (e.target.value === '__other__') {
+                                  handleUpdateRowType(row.id, row.type && !SLEEVE_SUBTYPES.includes(row.type as any) ? row.type : '');
+                                } else {
+                                  handleUpdateRowType(row.id, e.target.value);
+                                }
+                              }}
+                            >
+                              {SLEEVE_SUBTYPES.map(st => (
+                                <option key={st} value={st}>{st}</option>
+                              ))}
+                              <option value="__other__">Outro subtipo...</option>
+                            </select>
+                            {(!SLEEVE_SUBTYPES.includes(row.type as any) && row.type !== undefined) && (
+                              <input
+                                type="text"
+                                className="search-input"
+                                style={{ width: '100%', padding: '0.4rem 0.65rem', fontSize: '0.82rem', marginTop: '0.25rem' }}
+                                placeholder="Digite o subtipo (ex: Matte, Fit)"
+                                value={row.type}
+                                onChange={e => handleUpdateRowType(row.id, e.target.value)}
+                              />
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
               )}
             </div>
+              </>
+            )}
 
             {/* Ações do Footer */}
             <div style={{ 
@@ -1991,7 +2296,7 @@ export function SleevesStockTab({
               gap: '0.75rem'
             }}>
               <div>
-                {manualRows.length > 0 && (
+                {!editGameNoCards && manualRows.length > 0 && (
                   <button
                     type="button"
                     className="btn"
@@ -2018,7 +2323,7 @@ export function SleevesStockTab({
                   style={{ padding: '0.6rem 1.25rem', display: 'flex', alignItems: 'center', gap: '6px' }}
                 >
                   <CheckCircle2 size={16} />
-                  Salvar Sleeves (Manual)
+                  {editGameNoCards ? 'Salvar (Sem Cartas)' : 'Salvar Sleeves (Manual)'}
                 </button>
               </div>
             </div>

@@ -9,7 +9,10 @@ import {
   matchStockToDemand,
   summarizeGameSleeves,
   parseModelDimensions,
-  isGameInCollection
+  isGameInCollection,
+  POPULAR_SLEEVE_MODELS,
+  KNOWN_SLEEVE_BRANDS,
+  SLEEVE_SUBTYPES,
 } from '../src/utils/sleeveUtils.ts';
 import type { GameData, SleeveStockItem } from '../src/types/index.ts';
 
@@ -73,7 +76,7 @@ export async function runSleevesTests(logger: (msg: string) => void): Promise<{ 
     assert.equal(parsed.cardSleeves?.sets[0].quantity, 240);
     assert.equal(parsed.cardSleeves?.sets[0].width, 64);
     assert.equal(parsed.cardSleeves?.sets[0].height, 89);
-    assert.equal(parsed.cardSleeves?.sets[0].sizeName, 'Padrão');
+    assert.equal(parsed.cardSleeves?.sets[0].sizeName, 'Padrão / Standard');
     assert.equal(parsed.cardSleeves?.sets[0].sleeveProductName, 'Sleeve Padrão (63,5x88mm)');
 
     assert.equal(parsed.cardSleeves?.sets[1].name, 'Reference Cards');
@@ -84,16 +87,24 @@ export async function runSleevesTests(logger: (msg: string) => void): Promise<{ 
 
   // Teste 2: Dimensionamento e Nomenclatura de Padrões
   test('Sleeve Utils: Identifica corretamente nomes de tamanhos e formata milímetros', () => {
-    assert.equal(getCardSleeveSizeName(63.5, 88), 'Padrão');
-    assert.equal(getCardSleeveSizeName(64, 89), 'Padrão');
+    assert.equal(getCardSleeveSizeName(63.5, 88), 'Padrão / Standard');
+    assert.equal(getCardSleeveSizeName(64, 89), 'Padrão / Standard');
     assert.equal(getCardSleeveSizeName(45, 68), 'Mini Euro');
     assert.equal(getCardSleeveSizeName(41, 63), 'Mini USA');
-    assert.equal(getCardSleeveSizeName(54, 80), 'Yucatan');
+    assert.equal(getCardSleeveSizeName(43.5, 67.5), 'Mini Chimeuro');
+    assert.equal(getCardSleeveSizeName(43, 65), 'Mini Chimera');
+    assert.equal(getCardSleeveSizeName(56, 87), 'Padrão USA');
+    assert.equal(getCardSleeveSizeName(57.5, 89), 'Chimera');
+    assert.equal(getCardSleeveSizeName(59, 92), 'Padrão Euro');
+    assert.equal(getCardSleeveSizeName(61, 112), 'French Tarot');
+    assert.equal(getCardSleeveSizeName(65, 100), 'Copper');
+    assert.equal(getCardSleeveSizeName(70, 70), 'Quadrado');
+    assert.equal(getCardSleeveSizeName(70, 110), 'Silver');
     assert.equal(getCardSleeveSizeName(70, 120), 'Tarot');
-    assert.equal(getCardSleeveSizeName(80, 120), 'Ilustrada grande (Dixit)');
+    assert.equal(getCardSleeveSizeName(80, 120), 'Gold');
 
-    assert.equal(formatCardSleeveDimensions(63.5, 88), '63,5 × 88 mm');
-    assert.equal(formatCardSleeveDimensions(70, 120), '70 × 120 mm');
+    assert.equal(formatCardSleeveDimensions(63.5, 88), '63,5 x 88 mm');
+    assert.equal(formatCardSleeveDimensions(70, 120), '70 x 120 mm');
   });
 
   // Teste 3: Cálculo de Demanda da Coleção
@@ -307,7 +318,7 @@ export async function runSleevesTests(logger: (msg: string) => void): Promise<{ 
     const custom2 = parseModelDimensions('75x105');
     assert.equal(custom2.width, 75);
     assert.equal(custom2.height, 105);
-    assert.equal(custom2.sizeName, '75 × 105 mm');
+    assert.equal(custom2.sizeName, '75 x 105 mm');
 
     const custom3 = parseModelDimensions('Customizado Livre');
     assert.equal(custom3.sizeName, 'Customizado Livre');
@@ -397,7 +408,7 @@ export async function runSleevesTests(logger: (msg: string) => void): Promise<{ 
     assert.equal(parsed.comparaId, 36125);
     assert.equal(parsed.cardSleeves?.sets.length, 2);
     assert.equal(parsed.cardSleeves?.sets[0].quantity, 110);
-    assert.equal(parsed.cardSleeves?.sets[0].sizeName, 'Padrão');
+    assert.equal(parsed.cardSleeves?.sets[0].sizeName, 'Padrão / Standard');
     assert.equal(parsed.cardSleeves?.sets[1].quantity, 4);
     assert.equal(parsed.cardSleeves?.sets[1].sizeName, 'Especial');
   });
@@ -502,7 +513,7 @@ export async function runSleevesTests(logger: (msg: string) => void): Promise<{ 
     assert.ok(parsed2, 'Deve extrair sleeves do texto da Ludopedia');
     assert.equal(parsed2.sets.length, 2);
     assert.equal(parsed2.sets[0].quantity, 208);
-    assert.equal(parsed2.sets[0].sizeName, 'Padrão');
+    assert.equal(parsed2.sets[0].sizeName, 'Padrão / Standard');
     assert.equal(parsed2.sets[1].quantity, 4);
     assert.equal(parsed2.sets[1].sizeName, 'Tarot');
   });
@@ -550,7 +561,7 @@ export async function runSleevesTests(logger: (msg: string) => void): Promise<{ 
     assert.equal(parsed1.sourceUrl, 'https://boardgamegeek.com/boardgame/167791');
     assert.equal(parsed1.sets.length, 1);
     assert.equal(parsed1.sets[0].quantity, 233);
-    assert.equal(parsed1.sets[0].sizeName, 'Padrão');
+    assert.equal(parsed1.sets[0].sizeName, 'Padrão / Standard');
 
     // Caso 2: Formato com @ e dimensão "157 cards @ 65mm X 100mm"
     const text2 = 'Cards/Sleeves: 157 cards @ 65mm X 100mm / Card_Sleeves_-_65x100';
@@ -609,7 +620,7 @@ export async function runSleevesTests(logger: (msg: string) => void): Promise<{ 
 
     const demands = computeCollectionSleeveDemands([gameWithBggSleeves]);
     assert.equal(demands.length, 1);
-    assert.equal(demands[0].modelName, 'Padrão');
+    assert.equal(demands[0].modelName, 'Padrão / Standard');
     assert.equal(demands[0].totalCards, 233);
     assert.equal(demands[0].neededCards, 233);
 
@@ -798,6 +809,182 @@ export async function runSleevesTests(logger: (msg: string) => void): Promise<{ 
     assert.equal(totalCards, 125);
     assert.equal(sleevedCards, 45);
     assert.equal(pendingCards, 80);
+  });
+
+  // Teste 20: Jogo sem Cartas (Opção "Não possui cartas")
+  test('Opção Jogo Não Possui Cartas: Exclui jogo das demandas e zera cartas necessárias', () => {
+    const hiveGame: GameData = {
+      id: 'hive-1',
+      name: 'Hive Pocket',
+      status: 'Na Coleção',
+      spend: 120,
+      type: 'Base',
+      value: 140,
+      noCards: true,
+      cardSleeves: {
+        source: 'Manual',
+        sets: []
+      }
+    };
+
+    const azulGame: GameData = {
+      id: 'azul-1',
+      name: 'Azul',
+      status: 'Na Coleção',
+      spend: 250,
+      type: 'Base',
+      value: 280,
+      noCards: true
+    };
+
+    const catanGame: GameData = {
+      id: 'catan-1',
+      name: 'Catan',
+      status: 'Na Coleção',
+      spend: 200,
+      type: 'Base',
+      value: 220,
+      noCards: false,
+      cardSleeves: {
+        source: 'Compara Jogos',
+        sets: [
+          {
+            quantity: 120,
+            width: 54,
+            height: 80,
+            sizeName: 'Yucatan',
+            isSleeved: false
+          }
+        ]
+      }
+    };
+
+    // Coleção com 2 jogos sem cartas e 1 jogo com cartas
+    const demands = computeCollectionSleeveDemands([hiveGame, azulGame, catanGame]);
+    assert.equal(demands.length, 1, 'Apenas o jogo com cartas (Catan) deve gerar demandas');
+    assert.equal(demands[0].modelName, 'Yucatan');
+    assert.equal(demands[0].totalCards, 120);
+    assert.equal(demands[0].neededCards, 120);
+
+    // Coleção contendo exclusivamente jogos sem cartas
+    const noCardsDemands = computeCollectionSleeveDemands([hiveGame, azulGame]);
+    assert.equal(noCardsDemands.length, 0, 'Jogos marcados sem cartas não geram nenhuma demanda');
+
+    // Jogo com cardSleeves prévio que é marcado como noCards: true
+    const carcassonneWithResidual: GameData = {
+      id: 'carcassonne-1',
+      name: 'Carcassonne',
+      status: 'Na Coleção',
+      spend: 180,
+      type: 'Base',
+      value: 200,
+      noCards: true, // Usuário configurou que o jogo não possui cartas (apenas tiles)
+      cardSleeves: {
+        source: 'BGG',
+        sets: [
+          {
+            quantity: 72,
+            width: 63.5,
+            height: 88,
+            sizeName: 'Padrão',
+            isSleeved: false
+          }
+        ]
+      }
+    };
+
+    const residualDemands = computeCollectionSleeveDemands([carcassonneWithResidual]);
+    assert.equal(residualDemands.length, 0, 'Mesmo se houver sets prévios de API, a flag noCards tem precedência estrita');
+  });
+
+  // Teste 21: Lista Estrita de 16 Tipos, 9 Marcas e 3 Subtipos (Normal, Premium, Slim)
+  test('Tipos, Marcas e Subtipos: Valida estritamente a lista de 16 modelos, 9 marcas e 3 subtipos', () => {
+    // 1. Validar 16 tipos
+    const expectedModels = [
+      'Mini USA (41 x 63 mm)',
+      'Mini Chimeuro (43,5 x 67,5 mm)',
+      'Mini Chimera (43 x 65 mm)',
+      'Mini Euro (45 x 68 mm)',
+      'Padrão USA (56 x 87 mm)',
+      'Chimera (57,5 x 89 mm)',
+      'Padrão Euro (59 x 92 mm)',
+      'French Tarot (61 x 112 mm)',
+      'Padrão / Standard (63,5 x 88 mm)',
+      'Padrão Premium (63,5 x 88 mm - mais espesso)',
+      'Padrão Fit / Shield Perfect Size (ajuste justo)',
+      'Copper (65 x 100 mm)',
+      'Quadrado (70 x 70 mm)',
+      'Silver (70 x 110 mm)',
+      'Tarot (70 x 120 mm)',
+      'Gold (80 x 120 mm)',
+    ];
+    assert.equal(POPULAR_SLEEVE_MODELS.length, 16, 'Deve conter exatamente 16 tipos de sleeves');
+    assert.deepEqual([...POPULAR_SLEEVE_MODELS], expectedModels);
+
+    // 2. Validar 9 marcas
+    const expectedBrands = [
+      'Bucaneiros',
+      'Meeple Virus',
+      'Meeple BR',
+      'Mayday',
+      'Dragon Shield',
+      'Sleeve Kings',
+      'Central',
+      'Mosaico',
+      'Jelly Monster',
+    ];
+    assert.equal(KNOWN_SLEEVE_BRANDS.length, 9, 'Deve conter exatamente 9 marcas de sleeves');
+    assert.deepEqual([...KNOWN_SLEEVE_BRANDS], expectedBrands);
+
+    // 3. Validar 3 subtipos (Normal, Premium, Slim)
+    const expectedSubtypes = ['Normal', 'Premium', 'Slim'];
+    assert.equal(SLEEVE_SUBTYPES.length, 3, 'Deve conter exatamente 3 subtipos');
+    assert.deepEqual([...SLEEVE_SUBTYPES], expectedSubtypes);
+
+    // 4. Parser dos modelos especiais sem dimensões numéricas no título
+    const parsedFit = parseModelDimensions('Padrão Fit / Shield Perfect Size (ajuste justo)');
+    assert.equal(parsedFit.width, 63.5);
+    assert.equal(parsedFit.height, 88);
+    assert.equal(parsedFit.sizeName, 'Padrão Fit / Shield Perfect Size');
+
+    const parsedPremium = parseModelDimensions('Padrão Premium (63,5 x 88 mm - mais espesso)');
+    assert.equal(parsedPremium.width, 63.5);
+    assert.equal(parsedPremium.height, 88);
+    assert.equal(parsedPremium.sizeName, 'Padrão Premium');
+
+    const parsedGold = parseModelDimensions('Gold (80 x 120 mm)');
+    assert.equal(parsedGold.width, 80);
+    assert.equal(parsedGold.height, 120);
+    assert.equal(parsedGold.sizeName, 'Gold');
+
+    // 5. Múltiplos conjuntos com marca e subtipo
+    const sets = [
+      {
+        name: 'Cartas Principais',
+        quantity: 100,
+        width: 63.5,
+        height: 88,
+        sizeName: 'Padrão / Standard',
+        isSleeved: true,
+        sleeveBrand: 'Bucaneiros',
+        sleeveType: 'Normal',
+      },
+      {
+        name: 'Cartas Especiais',
+        quantity: 20,
+        width: 70,
+        height: 120,
+        sizeName: 'Tarot',
+        isSleeved: true,
+        sleeveBrand: 'Dragon Shield',
+        sleeveType: 'Premium',
+      }
+    ];
+
+    const summary = summarizeGameSleeves(sets);
+    assert.equal(summary.isSleeved, true);
+    assert.equal(summary.sleeveBrand, 'Bucaneiros, Dragon Shield');
+    assert.equal(summary.sleeveType, 'Normal, Premium');
   });
 
   return { passed, failed };

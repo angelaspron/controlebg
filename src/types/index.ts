@@ -41,6 +41,7 @@ export interface GameData {
   sleeveBrand?: string; // Marca do sleeve usado (ou resumo de marcas)
   sleeveType?: string; // Tipo/espessura (ou resumo de tipos)
   sleevesUsed?: GameSleeveUsage[]; // Lista de múltiplos sleeves/marcas adicionados pelo usuário
+  noCards?: boolean; // Se o jogo não possui cartas (ex: Hive, Carcassonne, Xadrez)
 }
 
 export interface CardSleeveSet {
@@ -71,6 +72,7 @@ export interface CardSleevesData {
   source?: string; // "Compara Jogos"
   sourceUrl?: string; // Link direto no Compara Jogos
   sets: CardSleeveSet[];
+  noCards?: boolean;
 }
 
 export interface SleeveStockItem {

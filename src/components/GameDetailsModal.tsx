@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Users, Star, Brain, Trophy, Calendar, ExternalLink, Pencil, Tag, Clock, Award, ShieldCheck, RefreshCw, Loader2, Layers, Check, Plus, Trash2 } from 'lucide-react';
 import type { GameData, CardSleeveSet, GameSleeveUsage } from '../types';
-import { KNOWN_SLEEVE_BRANDS, POPULAR_SLEEVE_MODELS, formatCardSleeveDimensions, parseModelDimensions, summarizeGameSleeves } from '../utils/sleeveUtils';
+import { KNOWN_SLEEVE_BRANDS, POPULAR_SLEEVE_MODELS, SLEEVE_SUBTYPES, formatCardSleeveDimensions, parseModelDimensions, summarizeGameSleeves } from '../utils/sleeveUtils';
 import '../components.css';
 
 interface GameDetailsModalProps {
@@ -16,8 +16,9 @@ interface GameDetailsModalProps {
       isSleeved: boolean; 
       sleeveBrand?: string; 
       sleeveType?: string;
-      cardSleeves?: { source?: string; sourceUrl?: string; sets: CardSleeveSet[] };
+      cardSleeves?: { source?: string; sourceUrl?: string; sets: CardSleeveSet[]; noCards?: boolean };
       sleevesUsed?: GameSleeveUsage[];
+      noCards?: boolean;
     }
   ) => void;
   isUpdating?: boolean;
@@ -46,6 +47,7 @@ export function GameDetailsModal({ game, isOpen, onClose, onEdit, onRefresh, onS
 
   // Estados locais para controle de múltiplos tipos de sleeves deste jogo
   const [localSets, setLocalSets] = useState<LocalSleeveSetItem[]>([]);
+  const [noCards, setNoCards] = useState(false);
   const [hasSleeveChanges, setHasSleeveChanges] = useState(false);
   const [sleeveSavedFeedback, setSleeveSavedFeedback] = useState(false);
 
@@ -137,6 +139,7 @@ export function GameDetailsModal({ game, isOpen, onClose, onEdit, onRefresh, onS
     }
 
     setLocalSets(items);
+    setNoCards(Boolean(game.noCards));
     setHasSleeveChanges(false);
     setSleeveSavedFeedback(false);
   }, [game]);
@@ -267,7 +270,7 @@ export function GameDetailsModal({ game, isOpen, onClose, onEdit, onRefresh, onS
       brand: KNOWN_SLEEVE_BRANDS[0],
       isCustomBrand: false,
       customBrand: '',
-      type: 'Padrão',
+      type: 'Normal',
       isCustomAdded: true,
       isCustomModel: false,
       customModel: '',
@@ -348,10 +351,43 @@ export function GameDetailsModal({ game, isOpen, onClose, onEdit, onRefresh, onS
         source: game.cardSleeves?.source || 'Compara Jogos',
         sourceUrl: game.cardSleeves?.sourceUrl,
         sets: updatedSets,
+        noCards: false,
       },
       sleevesUsed,
+      noCards: false,
     });
 
+    setNoCards(false);
+    setHasSleeveChanges(false);
+    setSleeveSavedFeedback(true);
+    setTimeout(() => setSleeveSavedFeedback(false), 3000);
+  };
+
+  const handleToggleNoCards = () => {
+    if (!game || !onSaveSleeveInfo) return;
+    const nextNoCards = !noCards;
+    setNoCards(nextNoCards);
+    if (nextNoCards) {
+      onSaveSleeveInfo(game.id, {
+        isSleeved: false,
+        sleeveBrand: undefined,
+        sleeveType: undefined,
+        cardSleeves: {
+          source: 'Manual',
+          sourceUrl: game.cardSleeves?.sourceUrl,
+          sets: [],
+          noCards: true,
+        },
+        sleevesUsed: [],
+        noCards: true,
+      });
+      setLocalSets([]);
+    } else {
+      onSaveSleeveInfo(game.id, {
+        isSleeved: false,
+        noCards: false,
+      });
+    }
     setHasSleeveChanges(false);
     setSleeveSavedFeedback(true);
     setTimeout(() => setSleeveSavedFeedback(false), 3000);
@@ -674,26 +710,94 @@ export function GameDetailsModal({ game, isOpen, onClose, onEdit, onRefresh, onS
                 <Layers size={17} color="#818cf8" />
                 Cartas e Tamanhos de Sleeves
               </h3>
-              {game.cardSleeves?.sourceUrl && (
-                <a
-                  href={game.cardSleeves.sourceUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  style={{
-                    fontSize: '0.78rem',
-                    color: '#38bdf8',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    textDecoration: 'none'
-                  }}
-                >
-                  <ExternalLink size={13} /> Ver no Compara Jogos
-                </a>
-              )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                {onSaveSleeveInfo && (
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={handleToggleNoCards}
+                    style={{
+                      fontSize: '0.78rem',
+                      padding: '0.3rem 0.65rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      background: noCards ? 'rgba(148, 163, 184, 0.2)' : 'rgba(255, 255, 255, 0.04)',
+                      borderColor: noCards ? 'rgba(148, 163, 184, 0.45)' : 'rgba(255, 255, 255, 0.12)',
+                      color: noCards ? '#f1f5f9' : 'var(--text-muted)',
+                    }}
+                    title={noCards ? "Desmarcar 'Sem cartas' (o jogo possui cartas)" : "Marcar que este jogo não possui cartas"}
+                  >
+                    🚫 {noCards ? 'Jogo sem cartas' : 'Não possui cartas'}
+                  </button>
+                )}
+                {game.cardSleeves?.sourceUrl && !noCards && (
+                  <a
+                    href={game.cardSleeves.sourceUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{
+                      fontSize: '0.78rem',
+                      color: '#38bdf8',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      textDecoration: 'none'
+                    }}
+                  >
+                    <ExternalLink size={13} /> Ver no Compara Jogos
+                  </a>
+                )}
+              </div>
             </div>
 
-            {localSets.length === 0 ? (
+            {noCards ? (
+              <div style={{
+                background: 'rgba(148, 163, 184, 0.08)',
+                border: '1px solid rgba(148, 163, 184, 0.25)',
+                borderRadius: '12px',
+                padding: '1.25rem',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.75rem',
+                marginBottom: '1rem'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <span style={{ fontSize: '1.5rem' }}>🚫</span>
+                  <div>
+                    <h4 style={{ margin: 0, fontSize: '0.98rem', color: '#f1f5f9', fontWeight: 600 }}>
+                      Este jogo não possui cartas
+                    </h4>
+                    <p style={{ margin: '3px 0 0 0', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                      Cadastrado como jogo sem componentes de cartas ou baralhos (ex: peças de madeira, dados, miniaturas). Nenhum sleeve é requerido.
+                    </p>
+                  </div>
+                </div>
+                {onSaveSleeveInfo && (
+                  <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.25rem', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={handleToggleNoCards}
+                      style={{ fontSize: '0.78rem', padding: '0.4rem 0.85rem' }}
+                    >
+                      Desmarcar (Jogo possui cartas)
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => {
+                        setNoCards(false);
+                        handleAddNewSleeveRow();
+                      }}
+                      style={{ fontSize: '0.78rem', padding: '0.4rem 0.85rem', display: 'flex', alignItems: 'center', gap: '4px' }}
+                    >
+                      <Plus size={13} /> Adicionar Tipo de Sleeve
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : localSets.length === 0 ? (
               <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1rem', background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: '10px' }}>
                 <p style={{ margin: '0 0 0.75rem 0' }}>
                   Ainda não há contagem de cartas cadastrada para este jogo.
@@ -722,6 +826,17 @@ export function GameDetailsModal({ game, isOpen, onClose, onEdit, onRefresh, onS
                       style={{ fontSize: '0.78rem', padding: '0.4rem 0.8rem', display: 'flex', alignItems: 'center', gap: '4px' }}
                     >
                       <Plus size={13} /> Adicionar Tipo de Sleeve
+                    </button>
+                  )}
+                  {onSaveSleeveInfo && (
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={handleToggleNoCards}
+                      style={{ fontSize: '0.78rem', padding: '0.4rem 0.8rem', display: 'flex', alignItems: 'center', gap: '4px', borderColor: 'rgba(148, 163, 184, 0.35)', color: '#cbd5e1' }}
+                      title="Marcar que este jogo não possui cartas"
+                    >
+                      🚫 Não Possui Cartas
                     </button>
                   )}
                 </div>
@@ -897,16 +1012,35 @@ export function GameDetailsModal({ game, isOpen, onClose, onEdit, onRefresh, onS
                               </label>
 
                               <label>
-                                Tipo / Espessura:
-                                <input
-                                  type="text"
+                                Subtipo do Sleeve:
+                                <select
                                   className="search-input"
                                   style={{ padding: '0.4rem 0.65rem', fontSize: '0.82rem' }}
-                                  placeholder="Ex: Premium, Slim, Padrão, Matte"
-                                  value={set.type}
-                                  maxLength={50}
-                                  onChange={e => handleChangeType(set.id, e.target.value)}
-                                />
+                                  value={SLEEVE_SUBTYPES.includes(set.type as any) ? set.type : (set.type ? '__other__' : 'Normal')}
+                                  onChange={e => {
+                                    if (e.target.value === '__other__') {
+                                      handleChangeType(set.id, set.type && !SLEEVE_SUBTYPES.includes(set.type as any) ? set.type : '');
+                                    } else {
+                                      handleChangeType(set.id, e.target.value);
+                                    }
+                                  }}
+                                >
+                                  {SLEEVE_SUBTYPES.map(st => (
+                                    <option key={st} value={st}>{st}</option>
+                                  ))}
+                                  <option value="__other__">Outro subtipo...</option>
+                                </select>
+                                {(!SLEEVE_SUBTYPES.includes(set.type as any) && set.type !== undefined) && (
+                                  <input
+                                    type="text"
+                                    className="search-input"
+                                    style={{ padding: '0.4rem 0.65rem', fontSize: '0.82rem', marginTop: '0.25rem' }}
+                                    placeholder="Digite o subtipo (ex: Matte, Fit)"
+                                    value={set.type}
+                                    maxLength={50}
+                                    onChange={e => handleChangeType(set.id, e.target.value)}
+                                  />
+                                )}
                               </label>
                             </div>
                           )}

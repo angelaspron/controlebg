@@ -8,54 +8,55 @@ export interface StandardSleeveSize {
 }
 
 export const STANDARD_SLEEVE_SIZES: StandardSleeveSize[] = [
-  { width: 41, height: 63, name: 'Mini USA', source: 'Mayday Games / Sleeve Kings' },
-  { width: 45, height: 68, name: 'Mini Euro', source: 'Mayday Games / Sleeve Kings' },
-  { width: 54, height: 80, name: 'Yucatan', source: 'Mayday Games / Catan' },
-  { width: 56, height: 87, name: 'Standard USA', source: 'Mayday Games / Sleeve Kings' },
-  { width: 57.5, height: 89, name: 'USA Chimera', source: 'Mayday Games / Sleeve Kings' },
-  { width: 59, height: 92, name: 'Euro', source: 'Mayday Games / Sleeve Kings' },
-  { width: 63.5, height: 88, name: 'Padrão', source: 'BoardGameGeek / Mayday Games' },
-  { width: 65, height: 100, name: 'Copper', source: 'Bucaneiros / 7 Wonders' },
-  { width: 70, height: 70, name: 'Quadrado pequeno', source: 'Mayday Games / Sleeve Kings' },
-  { width: 70, height: 120, name: 'Tarot', source: 'Mayday Games / Sleeve Kings' },
-  { width: 80, height: 120, name: 'Ilustrada grande (Dixit)', source: 'Mayday Games / Sleeve Kings' },
-  { width: 80, height: 90, name: 'Quadrado grande', source: 'Mayday Games / Sleeve Kings' },
-  { width: 82, height: 122, name: 'Magnum Silver', source: 'Mayday Games' },
+  { width: 41, height: 63, name: 'Mini USA' },
+  { width: 43.5, height: 67.5, name: 'Mini Chimeuro' },
+  { width: 43, height: 65, name: 'Mini Chimera' },
+  { width: 45, height: 68, name: 'Mini Euro' },
+  { width: 56, height: 87, name: 'Padrão USA' },
+  { width: 57.5, height: 89, name: 'Chimera' },
+  { width: 59, height: 92, name: 'Padrão Euro' },
+  { width: 61, height: 112, name: 'French Tarot' },
+  { width: 63.5, height: 88, name: 'Padrão / Standard' },
+  { width: 65, height: 100, name: 'Copper' },
+  { width: 70, height: 70, name: 'Quadrado' },
+  { width: 70, height: 110, name: 'Silver' },
+  { width: 70, height: 120, name: 'Tarot' },
+  { width: 80, height: 120, name: 'Gold' },
 ];
 
 export const KNOWN_SLEEVE_BRANDS = [
   'Bucaneiros',
-  'Gamegenic',
-  'MeepleBR',
-  'Mayday Games',
-  'Central',
-  'Redbox',
-  'Ultra Pro',
-  'Ultimate Guard',
-  'Blue Core',
-  'Just Sleeves',
   'Meeple Virus',
-  'Sleeve Kings',
+  'Meeple BR',
+  'Mayday',
   'Dragon Shield',
-  'Arcane Tinmen',
-  'KMC'
+  'Sleeve Kings',
+  'Central',
+  'Mosaico',
+  'Jelly Monster',
 ];
 
 export const POPULAR_SLEEVE_MODELS = [
-  'Padrão (63,5 × 88 mm)',
-  'Mini Euro (45 × 68 mm)',
-  'Mini USA (41 × 63 mm)',
-  'Euro (59 × 92 mm)',
-  'Standard USA (56 × 87 mm)',
-  'USA Chimera (57,5 × 89 mm)',
-  'Yucatan (54 × 80 mm)',
-  'Tarot (70 × 120 mm)',
-  'Quadrado Pequeno (70 × 70 mm)',
-  'Ilustrada Grande / Dixit (80 × 120 mm)',
-  'Copper (65 × 100 mm)',
-  'Quadrado Grande (80 × 90 mm)',
-  'Magnum Silver (82 × 122 mm)',
+  'Mini USA (41 x 63 mm)',
+  'Mini Chimeuro (43,5 x 67,5 mm)',
+  'Mini Chimera (43 x 65 mm)',
+  'Mini Euro (45 x 68 mm)',
+  'Padrão USA (56 x 87 mm)',
+  'Chimera (57,5 x 89 mm)',
+  'Padrão Euro (59 x 92 mm)',
+  'French Tarot (61 x 112 mm)',
+  'Padrão / Standard (63,5 x 88 mm)',
+  'Padrão Premium (63,5 x 88 mm - mais espesso)',
+  'Padrão Fit / Shield Perfect Size (ajuste justo)',
+  'Copper (65 x 100 mm)',
+  'Quadrado (70 x 70 mm)',
+  'Silver (70 x 110 mm)',
+  'Tarot (70 x 120 mm)',
+  'Gold (80 x 120 mm)',
 ];
+
+export const SLEEVE_SUBTYPES = ['Normal', 'Premium', 'Slim'] as const;
+export type SleeveSubtype = typeof SLEEVE_SUBTYPES[number];
 
 function isApprox(val: number, target: number, tolerance: number): boolean {
   return Math.abs(val - target) <= tolerance;
@@ -65,15 +66,36 @@ function isApprox(val: number, target: number, tolerance: number): boolean {
  * Identifica o nome padrão de tamanho de sleeve a partir da largura e altura
  */
 export function getCardSleeveSizeName(width: number, height: number, productName?: string): string {
+  if (productName) {
+    const cleaned = productName.replace(/^sleeve\s+/i, '').trim();
+    if (cleaned) {
+      if (/fit|perfect\s*size/i.test(cleaned)) return 'Padrão Fit / Shield Perfect Size';
+      if (/premium/i.test(cleaned) && isApprox(width, 63.5, 0.8) && isApprox(height, 88, 1.5)) {
+        return 'Padrão Premium';
+      }
+    }
+  }
+
   const match = STANDARD_SLEEVE_SIZES.find(s => 
     isApprox(width, s.width, 0.6) && isApprox(height, s.height, 1.2)
   );
   if (match) return match.name;
 
-  if (isApprox(width, 80, 0.6) && isApprox(height, 90, 1.5)) return 'Quadrado grande';
-  if (isApprox(width, 70, 0.6) && isApprox(height, 70, 1.2)) return 'Quadrado pequeno';
+  if (isApprox(width, 63.5, 1.0) && isApprox(height, 88, 2.0)) return 'Padrão / Standard';
+  if (isApprox(width, 41, 1.0) && isApprox(height, 63, 1.5)) return 'Mini USA';
+  if (isApprox(width, 45, 1.0) && isApprox(height, 68, 1.5)) return 'Mini Euro';
+  if (isApprox(width, 56, 1.0) && isApprox(height, 87, 1.5)) return 'Padrão USA';
+  if (isApprox(width, 57.5, 1.0) && isApprox(height, 89, 1.5)) return 'Chimera';
+  if (isApprox(width, 59, 1.0) && isApprox(height, 92, 1.5)) return 'Padrão Euro';
+  if (isApprox(width, 70, 1.0) && isApprox(height, 120, 2.0)) return 'Tarot';
+  if (isApprox(width, 80, 1.0) && isApprox(height, 120, 2.0)) return 'Gold';
+  if (isApprox(width, 70, 1.0) && isApprox(height, 70, 1.5)) return 'Quadrado';
+  if (isApprox(width, 70, 1.0) && isApprox(height, 110, 1.5)) return 'Silver';
+  if (isApprox(width, 65, 1.0) && isApprox(height, 100, 1.5)) return 'Copper';
+  if (isApprox(width, 61, 1.0) && isApprox(height, 112, 1.5)) return 'French Tarot';
+  if (isApprox(width, 43.5, 1.0) && isApprox(height, 67.5, 1.5)) return 'Mini Chimeuro';
+  if (isApprox(width, 43, 1.0) && isApprox(height, 65, 1.5)) return 'Mini Chimera';
 
-  // Se o Compara Jogos retornou um sleeveProduct com nome (ex: "Sleeve Yucatan (54x80mm)")
   if (productName) {
     const cleaned = productName.replace(/^sleeve\s+/i, '').trim();
     if (cleaned) {
@@ -85,23 +107,29 @@ export function getCardSleeveSizeName(width: number, height: number, productName
 }
 
 /**
- * Formata as dimensões de largura e altura no padrão "63,5 × 88 mm"
+ * Formata as dimensões de largura e altura no padrão "63,5 x 88 mm"
  */
 export function formatCardSleeveDimensions(width: number, height: number): string {
   const formatNum = (n: number) => Number.isInteger(n) ? String(n) : String(n).replace('.', ',');
-  return `${formatNum(width)} × ${formatNum(height)} mm`;
+  return `${formatNum(width)} x ${formatNum(height)} mm`;
 }
 
 /**
  * Extrai dimensões (largura, altura em mm) a partir do nome de um modelo comum ou personalizado
- * Ex: "Padrão (63,5 × 88 mm)" -> { width: 63.5, height: 88, sizeName: "Padrão" }
- * Ex: "Quadrado (70 × 70 mm)" -> { width: 70, height: 70, sizeName: "Quadrado" }
- * Ex: "75x105" -> { width: 75, height: 105, sizeName: "75 × 105 mm" }
+ * Ex: "Padrão / Standard (63,5 x 88 mm)" -> { width: 63.5, height: 88, sizeName: "Padrão / Standard" }
+ * Ex: "Quadrado (70 x 70 mm)" -> { width: 70, height: 70, sizeName: "Quadrado" }
+ * Ex: "75x105" -> { width: 75, height: 105, sizeName: "75 x 105 mm" }
  */
 export function parseModelDimensions(modelStr: string): { width: number; height: number; sizeName: string } {
   if (!modelStr || !modelStr.trim()) {
-    return { width: 63.5, height: 88, sizeName: 'Padrão' };
+    return { width: 63.5, height: 88, sizeName: 'Padrão / Standard' };
   }
+
+  // Caso especial: Padrão Fit / Shield Perfect Size
+  if (/fit|perfect\s*size/i.test(modelStr)) {
+    return { width: 63.5, height: 88, sizeName: 'Padrão Fit / Shield Perfect Size' };
+  }
+
   const match = modelStr.match(/(\d+(?:[.,]\d+)?)\s*[×xX*]\s*(\d+(?:[.,]\d+)?)/);
   if (match) {
     const width = parseFloat(match[1].replace(',', '.'));
@@ -118,7 +146,7 @@ export function parseModelDimensions(modelStr: string): { width: number; height:
     const sizeName = candidateName || (standardName !== 'Especial' ? standardName : formatCardSleeveDimensions(width, height));
     return { width, height, sizeName };
   }
-  return { width: 63.5, height: 88, sizeName: modelStr.trim() || 'Padrão' };
+  return { width: 63.5, height: 88, sizeName: modelStr.trim() || 'Padrão / Standard' };
 }
 
 /**
@@ -253,6 +281,9 @@ export function computeCollectionSleeveDemands(games: GameData[]): CollectionSle
   const ownedGames = games.filter(isGameInCollection);
 
   for (const game of ownedGames) {
+    // Jogos marcados expressamente como sem cartas não geram demanda de sleeves
+    if (game.noCards) continue;
+
     // Processar tanto cardSleeves.sets quanto sleevesUsed adicionados pelo usuário
     const sets: (CardSleeveSet | GameSleeveUsage)[] = (game.cardSleeves?.sets && game.cardSleeves.sets.length > 0)
       ? game.cardSleeves.sets
