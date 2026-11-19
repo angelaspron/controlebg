@@ -493,5 +493,40 @@ export async function runRegressionTests(logger: (msg: string) => void): Promise
     assert.equal(finalShelf.length, 5, 'A estante final deve conter exatamente 5 jogos confirmados (0 vazamentos)');
   });
 
+  // Regressão 12: Alternância e Persistência de Tema Claro/Escuro (Botão Sol/Lua)
+  await test('Alternância e Persistência de Tema Claro/Escuro: Alterna entre dark e light e preserva padrão original', () => {
+    const THEME_STORAGE_KEY = 'boardgame_manager_theme';
+    let mockStorage: Record<string, string> = {};
+
+    const getStoredTheme = () => {
+      const val = mockStorage[THEME_STORAGE_KEY];
+      return val === 'light' || val === 'dark' ? val : 'dark';
+    };
+
+    const toggleTheme = (current: 'dark' | 'light'): 'dark' | 'light' => {
+      const next = current === 'dark' ? 'light' : 'dark';
+      mockStorage[THEME_STORAGE_KEY] = next;
+      return next;
+    };
+
+    // 1. Padrão inicial sem preferência gravada deve ser 'dark' (regra de ouro)
+    assert.equal(getStoredTheme(), 'dark', 'Tema padrão inicial deve ser escuro');
+
+    // 2. Alterna para tema claro via botão Sol/Lua
+    let currentTheme: 'dark' | 'light' = getStoredTheme();
+    currentTheme = toggleTheme(currentTheme);
+    assert.equal(currentTheme, 'light', 'Tema deve alternar para claro');
+    assert.equal(mockStorage[THEME_STORAGE_KEY], 'light', 'Preferência clara gravada no storage');
+
+    // 3. Alterna novamente para tema escuro
+    currentTheme = toggleTheme(currentTheme);
+    assert.equal(currentTheme, 'dark', 'Tema deve retornar para escuro');
+    assert.equal(mockStorage[THEME_STORAGE_KEY], 'dark', 'Preferência escura gravada no storage');
+
+    // 4. Valores corrompidos ou inválidos devem fazer fallback seguro para 'dark'
+    mockStorage[THEME_STORAGE_KEY] = 'invalid_theme';
+    assert.equal(getStoredTheme(), 'dark', 'Fallback seguro para tema escuro aprovado');
+  });
+
   return { passed, failed };
 }

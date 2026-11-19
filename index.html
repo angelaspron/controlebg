@@ -10,6 +10,18 @@
         document.body.innerHTML = '<div style="padding:2rem;color:red;background:#fee2e2;min-height:100vh;"><h1>Erro Fatal (Promise)</h1><pre>' + event.reason + '</pre></div>';
       });
     </script>
+    <script>
+      try {
+        var savedTheme = localStorage.getItem('boardgame_manager_theme');
+        if (savedTheme === 'light') {
+          document.documentElement.setAttribute('data-theme', 'light');
+          document.documentElement.classList.add('light');
+        } else {
+          document.documentElement.setAttribute('data-theme', 'dark');
+          document.documentElement.classList.add('dark');
+        }
+      } catch (e) {}
+    </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Controle BG</title>

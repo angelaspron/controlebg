@@ -649,4 +649,199 @@
   box-sizing: border-box !important;
 }
 
+/* ========================================================
+   Tema Claro - Sobrescritas de Componentes
+   ======================================================== */
+
+[data-theme="light"] .game-card {
+  background: #ffffff;
+  border-color: rgba(226, 232, 240, 0.9);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.03);
+}
+
+[data-theme="light"] .game-card:hover {
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.04);
+  border-color: rgba(99, 102, 241, 0.4);
+}
+
+[data-theme="light"] .game-card-image {
+  background: #f8fafc;
+}
+
+[data-theme="light"] .game-title {
+  color: #0f172a;
+}
+
+[data-theme="light"] .stat-item {
+  color: #475569;
+}
+
+[data-theme="light"] .game-meta {
+  color: #64748b;
+}
+
+[data-theme="light"] .financial-row .label {
+  color: #64748b;
+}
+
+[data-theme="light"] .financial-row .value {
+  color: #0f172a;
+}
+
+[data-theme="light"] .game-type.base {
+  background: rgba(59, 130, 246, 0.12);
+  color: #1d4ed8;
+  border-color: rgba(59, 130, 246, 0.3);
+}
+
+[data-theme="light"] .game-type.expansion {
+  background: rgba(168, 85, 247, 0.12);
+  color: #7e22ce;
+  border-color: rgba(168, 85, 247, 0.3);
+}
+
+[data-theme="light"] .search-input {
+  background: #ffffff;
+  border: 1px solid rgba(203, 213, 225, 0.9);
+  color: #0f172a;
+}
+
+[data-theme="light"] .search-input::placeholder {
+  color: #94a3b8;
+}
+
+[data-theme="light"] .search-input option,
+[data-theme="light"] select option {
+  background-color: #ffffff;
+  color: #0f172a;
+}
+
+select option {
+  background-color: #1e293b;
+  color: #f8fafc;
+}
+
+[data-theme="light"] .header-actions {
+  background: rgba(241, 245, 249, 0.75) !important;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+}
+
+[data-theme="light"] .divider {
+  background: rgba(0, 0, 0, 0.1) !important;
+}
+
+[data-theme="light"] .main-tab-nav {
+  background: rgba(241, 245, 249, 0.95);
+  border: 1px solid rgba(203, 213, 225, 0.85);
+}
+
+[data-theme="light"] .main-tab-btn {
+  color: #64748b;
+}
+
+[data-theme="light"] .main-tab-btn:hover {
+  color: #0f172a;
+  background: rgba(255, 255, 255, 0.8);
+}
+
+[data-theme="light"] .tab-badge {
+  background: rgba(0, 0, 0, 0.07);
+  color: #334155;
+}
+
+[data-theme="light"] .financial-summary-grid .stat-box {
+  color: #0f172a;
+}
+
+[data-theme="light"] .stat-box strong {
+  color: #0f172a !important;
+}
+
+[data-theme="light"] .modal-overlay {
+  background-color: rgba(15, 23, 42, 0.55) !important;
+}
+
+[data-theme="light"] .modal-overlay .glass-panel {
+  background: #ffffff !important;
+  border: 1px solid rgba(203, 213, 225, 0.9) !important;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25) !important;
+  color: #0f172a;
+}
+
+[data-theme="light"] .modal-overlay h1,
+[data-theme="light"] .modal-overlay h2,
+[data-theme="light"] .modal-overlay h3,
+[data-theme="light"] .modal-overlay h4 {
+  color: #0f172a !important;
+}
+
+[data-theme="light"] .modal-overlay label {
+  color: #475569 !important;
+}
+
+[data-theme="light"] .board-card-sleeve-section {
+  background: #f8fafc;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+}
+
+[data-theme="light"] .board-card-sleeve-title {
+  color: #4338ca;
+}
+
+[data-theme="light"] .board-card-sleeve-row {
+  background: #ffffff;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+[data-theme="light"] .board-card-sleeve-size strong {
+  color: #0f172a;
+}
+
+[data-theme="light"] .board-sleeve-owner-panel {
+  background: #f8fafc;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+}
+
+[data-theme="light"] .board-sleeve-checkbox {
+  color: #1e293b;
+}
+
+[data-theme="light"] .board-sleeve-fields label {
+  color: #64748b;
+}
+
+[data-theme="light"] .qty-btn {
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  color: #0f172a;
+}
+
+[data-theme="light"] .qty-btn:hover {
+  background: #e2e8f0;
+  border-color: #94a3b8;
+}
+
+[data-theme="light"] .recharts-default-tooltip {
+  background-color: rgba(255, 255, 255, 0.98) !important;
+  border: 1px solid rgba(203, 213, 225, 0.9) !important;
+  color: #0f172a !important;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1) !important;
+}
+
+[data-theme="light"] .recharts-tooltip-item {
+  color: #0f172a !important;
+}
+
+[data-theme="light"] .login-screen-card {
+  background: #ffffff !important;
+  border: 1px solid rgba(203, 213, 225, 0.9) !important;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.12) !important;
+}
+
+[data-theme="light"] .login-screen-card h1 {
+  color: #0f172a !important;
+}
+
+
 

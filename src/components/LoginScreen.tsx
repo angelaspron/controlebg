@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { LogIn, UserPlus, KeyRound, Mail, User, Eye, EyeOff, AlertCircle, CheckCircle2, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { ThemeToggle } from './ThemeToggle';
 import '../index.css';
 
 interface LoginScreenProps {
@@ -121,9 +122,12 @@ export function LoginScreen({ onSuccess }: LoginScreenProps) {
   };
 
   return (
-    <div className="app-container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: 'var(--bg-color)', padding: '1.5rem' }}>
+    <div className="app-container" style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: 'var(--bg-color)', padding: '1.5rem' }}>
+      <div style={{ position: 'absolute', top: '1.5rem', right: '1.5rem', zIndex: 100 }}>
+        <ThemeToggle />
+      </div>
       <div 
-        className="glass-panel animate-fade-in" 
+        className="glass-panel animate-fade-in login-screen-card" 
         style={{ 
           padding: '2.5rem', 
           maxWidth: '460px', 

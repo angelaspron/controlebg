@@ -18,6 +18,7 @@ import { WhoGoesModal } from './components/WhoGoesModal';
 import type { GameData } from './types';
 import { isGameInCollection } from './utils/sleeveUtils';
 import { LoginScreen } from './components/LoginScreen';
+import { ThemeToggle } from './components/ThemeToggle';
 import './index.css';
 import './components.css';
 
@@ -354,7 +355,7 @@ function App() {
       <header className="header glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'center', padding: '0.5rem 1rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', width: '100%', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <img src="/logo.png" alt="Boardgame Manager Logo" style={{ width: '350px', maxWidth: '100%', height: 'auto', objectFit: 'contain', filter: 'drop-shadow(0px 0px 8px rgba(255,255,255,0.2))', marginTop: '-22px', marginBottom: '-22px' }} />
+            <img src="/logo.png" alt="Boardgame Manager Logo" className="app-logo" style={{ width: '350px', maxWidth: '100%', height: 'auto', objectFit: 'contain', marginTop: '-22px', marginBottom: '-22px' }} />
           </div>
           
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
@@ -378,6 +379,7 @@ function App() {
             <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
               Olá, <strong>{username}</strong>
             </span>
+            <ThemeToggle />
             <button className="btn" onClick={handleLogout} style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem', borderColor: 'rgba(239, 68, 68, 0.3)', color: '#ef4444' }}>
               Sair
             </button>

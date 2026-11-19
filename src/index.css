@@ -17,6 +17,25 @@
   --status-sold: #ef4444;
   
   --transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  --bg-color: var(--bg-dark);
+}
+
+[data-theme="light"],
+.theme-light {
+  --bg-dark: #f8fafc;
+  --bg-color: #f8fafc;
+  --bg-card: rgba(255, 255, 255, 0.9);
+  --text-main: #0f172a;
+  --text-muted: #64748b;
+  --accent: #4f46e5;
+  --accent-hover: #4338ca;
+  --accent-glow: rgba(79, 70, 229, 0.2);
+  
+  --glass-border: rgba(203, 213, 225, 0.7);
+  --glass-shadow: 0 10px 30px 0 rgba(148, 163, 184, 0.16);
+  
+  --status-owned: #059669;
+  --status-sold: #dc2626;
 }
 
 * {
@@ -132,3 +151,80 @@ body {
 .animate-spin {
   animation: spin 1s linear infinite;
 }
+
+/* ========================================================
+   Tema Claro & Suporte a Alternância de Tema (Sol / Lua)
+   ======================================================== */
+
+.app-logo {
+  filter: drop-shadow(0px 0px 8px rgba(255, 255, 255, 0.2));
+  transition: filter 0.3s ease;
+}
+
+[data-theme="light"] body,
+body.theme-light {
+  background-color: var(--bg-dark);
+  background-image: 
+    radial-gradient(circle at 15% 50%, rgba(99, 102, 241, 0.08), transparent 30%),
+    radial-gradient(circle at 85% 30%, rgba(236, 72, 153, 0.06), transparent 30%);
+  color: var(--text-main);
+}
+
+[data-theme="light"] .app-logo {
+  filter: drop-shadow(0px 2px 6px rgba(0, 0, 0, 0.12));
+}
+
+[data-theme="light"] .glass-panel {
+  background: var(--bg-card);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}
+
+[data-theme="light"] .btn {
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(203, 213, 225, 0.85);
+  color: #1e293b;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+[data-theme="light"] .btn:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+  color: #0f172a;
+}
+
+[data-theme="light"] .btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+  box-shadow: 0 4px 12px var(--accent-glow);
+}
+
+[data-theme="light"] .btn-primary:hover {
+  background: var(--accent-hover);
+  color: #ffffff;
+}
+
+.theme-toggle-btn {
+  background: var(--bg-card);
+  border: 1px solid var(--glass-border);
+  color: var(--text-main);
+}
+
+.theme-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  transform: translateY(-2px);
+}
+
+[data-theme="light"] .theme-toggle-btn {
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(203, 213, 225, 0.85);
+  color: #1e293b;
+}
+
+[data-theme="light"] .theme-toggle-btn:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+  color: #0f172a;
+}
+
