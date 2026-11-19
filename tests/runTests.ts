@@ -3,6 +3,7 @@ import { runRegressionTests } from './regression.test.ts';
 import { runStrictLudopediaTests } from './ludopediaStrictCollection.test.ts';
 import { runSleevesTests } from './sleeves.test.ts';
 import { runWhoGoesTests } from './whoGoes.test.ts';
+import { runSupabaseIntegrationTests } from './supabaseIntegration.test.ts';
 
 async function main() {
   console.log('===============================================================');
@@ -22,10 +23,11 @@ async function main() {
   const strictResults = await runStrictLudopediaTests(log);
   const sleevesResults = await runSleevesTests(log);
   const whoGoesResults = await runWhoGoesTests(log);
+  const supabaseResults = await runSupabaseIntegrationTests(log);
 
   const durationMs = Date.now() - startTime;
-  const totalPassed = smokeResults.passed + regressionResults.passed + strictResults.passed + sleevesResults.passed + whoGoesResults.passed;
-  const totalFailed = smokeResults.failed + regressionResults.failed + strictResults.failed + sleevesResults.failed + whoGoesResults.failed;
+  const totalPassed = smokeResults.passed + regressionResults.passed + strictResults.passed + sleevesResults.passed + whoGoesResults.passed + supabaseResults.passed;
+  const totalFailed = smokeResults.failed + regressionResults.failed + strictResults.failed + sleevesResults.failed + whoGoesResults.failed + supabaseResults.failed;
   const totalTests = totalPassed + totalFailed;
 
   console.log('\n===============================================================');

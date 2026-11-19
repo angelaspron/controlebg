@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { Dices, Upload, Trash2, Search, Plus, Settings, DownloadCloud, FileSpreadsheet, PieChart, FileJson, Eye, EyeOff, Zap, X, Layers } from 'lucide-react';
+import { Dices, Upload, Trash2, Search, Plus, Settings, DownloadCloud, FileSpreadsheet, PieChart, FileJson, Eye, EyeOff, Zap, X, Layers, Cloud } from 'lucide-react';
+import { useAuth } from './contexts/AuthContext';
 import { useCollection } from './hooks/useCollection';
 import { useSleeveStock } from './hooks/useSleeveStock';
 import { VirtualGameGrid } from './components/VirtualGameGrid';
@@ -21,6 +22,8 @@ import './index.css';
 import './components.css';
 
 function App() {
+  const { user, username: authUsername, loading: authLoading, signOut } = useAuth();
+
   const { 
     games, 
     columnMapping, 
@@ -49,7 +52,7 @@ function App() {
     batchProgress,
     updatingGameIds,
     cancelBatchUpdate,
-  } = useCollection();
+  } = useCollection(user);
 
   const {
     stock: sleeveStock,
@@ -58,7 +61,7 @@ function App() {
     deleteStockItem,
     adjustQuantity,
     setStock: setSleeveStock,
-  } = useSleeveStock();
+  } = useSleeveStock(user);
 
   const [activeMainTab, setActiveMainTab] = useState<'collection' | 'sleeves'>('collection');
   const [searchTerm, setSearchTerm] = useState('');
@@ -84,37 +87,14 @@ function App() {
   }, [viewingGame, games]);
   const [selectedGameIds, setSelectedGameIds] = useState<Set<string>>(new Set());
   const [showFinancials, setShowFinancials] = useState(true);
-  const [username, setUsername] = useState<string | null>(() => {
-    try {
-      return localStorage.getItem('boardgame_manager_username');
-    } catch (e) {
-      return null;
-    }
-  });
+  const username = authUsername || (user?.email ? user.email.split('@')[0] : '');
   const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
 
-  const handleLogin = (user: string) => {
-    try {
-      localStorage.setItem('boardgame_manager_username', user);
-    } catch (e) {}
-    setUsername(user);
-    
-    // Check if onboarding is needed
-    try {
-      if (!localStorage.getItem('boardgame_manager_help_seen')) {
-        setIsHelpModalOpen(true);
-        localStorage.setItem('boardgame_manager_help_seen', 'true');
-      }
-    } catch (e) {
-      setIsHelpModalOpen(true);
-    }
-  };
-
-  const handleLogout = () => {
+  const handleLogout = async () => {
     try {
       localStorage.removeItem('boardgame_manager_username');
-    } catch (e) {}
-    setUsername(null);
+    } catch {}
+    await signOut();
   };
 
   useEffect(() => {
@@ -124,7 +104,7 @@ function App() {
           setIsHelpModalOpen(true);
           localStorage.setItem('boardgame_manager_help_seen', 'true');
         }
-      } catch (e) {}
+      } catch {}
     }
   }, [username]);
 
@@ -304,12 +284,22 @@ function App() {
     }, { totalGasto: 0, valorColecao: 0, totalVendido: 0, totalInCollection: 0, totalSold: 0, gastoVendido: 0 });
   }, [games]);
 
-  if (isLoading) {
-    return <div className="app-container"><div className="glass-panel" style={{textAlign: 'center', padding: '2rem'}}>Carregando...</div></div>;
+  if (authLoading || (isLoading && user)) {
+    return (
+      <div className="app-container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: 'var(--bg-color)' }}>
+        <div className="glass-panel animate-fade-in" style={{ textAlign: 'center', padding: '2.5rem 3rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', borderRadius: '16px' }}>
+          <Dices size={40} color="var(--primary-color, #6366f1)" style={{ animation: 'spin 2s linear infinite' }} />
+          <div>
+            <h3 style={{ margin: '0 0 0.25rem 0', color: '#fff' }}>Carregando sua coleção...</h3>
+            <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '0.85rem' }}>Sincronizando dados com o Supabase Cloud</p>
+          </div>
+        </div>
+      </div>
+    );
   }
 
-  if (!username) {
-    return <LoginScreen onLogin={handleLogin} />;
+  if (!user) {
+    return <LoginScreen />;
   }
 
   return (
@@ -367,7 +357,24 @@ function App() {
             <img src="/logo.png" alt="Boardgame Manager Logo" style={{ width: '350px', maxWidth: '100%', height: 'auto', objectFit: 'contain', filter: 'drop-shadow(0px 0px 8px rgba(255,255,255,0.2))', marginTop: '-22px', marginBottom: '-22px' }} />
           </div>
           
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+            <span 
+              title="Coleção e estoque sincronizados na nuvem Supabase (ControleBG)" 
+              style={{ 
+                display: 'inline-flex', 
+                alignItems: 'center', 
+                gap: '0.4rem', 
+                color: '#34d399', 
+                fontSize: '0.78rem', 
+                background: 'rgba(16, 185, 129, 0.15)', 
+                border: '1px solid rgba(16, 185, 129, 0.3)', 
+                padding: '0.3rem 0.65rem', 
+                borderRadius: '20px',
+                fontWeight: 500
+              }}
+            >
+              <Cloud size={14} /> Nuvem Conectada
+            </span>
             <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
               Olá, <strong>{username}</strong>
             </span>

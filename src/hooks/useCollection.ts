@@ -1,7 +1,17 @@
 import { useState, useEffect, useRef } from 'react';
 import type { GameData, ColumnMapping, SleeveStockItem } from '../types';
+import type { User } from '@supabase/supabase-js';
 import * as XLSX from 'xlsx';
 import { XMLParser } from 'fast-xml-parser';
+import { 
+  fetchUserGames, 
+  upsertUserGame, 
+  upsertUserGamesBatch, 
+  deleteUserGame, 
+  clearUserGames, 
+  fetchUserSettings, 
+  saveUserSettings 
+} from '../lib/supabase';
 import { 
   batchUpdateGamesParallel, 
   processBatchWithConcurrency, 
@@ -28,7 +38,7 @@ function bggUrl(path: string) {
   return `https://boardgamegeek.com/xmlapi2/${path}`;
 }
 
-export function useCollection() {
+export function useCollection(user?: User | null) {
   const [games, setGames] = useState<GameData[]>([]);
   const [columnMapping, setColumnMapping] = useState<ColumnMapping>(defaultMapping);
   const [ludoToken, setLudoToken] = useState<string>('');
@@ -40,51 +50,121 @@ export function useCollection() {
   const [batchProgress, setBatchProgress] = useState<BatchProgress | null>(null);
   const [updatingGameIds, setUpdatingGameIds] = useState<Set<string>>(new Set());
   const abortControllerRef = useRef<AbortController | null>(null);
+  const isInitialLoadRef = useRef(true);
 
-  // Carregar do Local Storage na inicialização
+  // Carregar dados (do Supabase se autenticado, ou localStorage como fallback)
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        try {
+    let isCancelled = false;
+
+    async function loadData() {
+      setIsLoading(true);
+
+      // Ler dados do localStorage como ponto de partida
+      let initialGames: GameData[] = [];
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
           const parsed = JSON.parse(saved);
           if (Array.isArray(parsed)) {
-            setGames(parsed.filter(g => g && typeof g === 'object'));
-          } else {
-            console.warn('Dados no localStorage não são um array. Limpando...');
-            localStorage.removeItem(STORAGE_KEY);
+            initialGames = parsed.filter(g => g && typeof g === 'object');
           }
-        } catch (e) {
-          console.error('Erro ao fazer parse dos dados locais', e);
+        }
+      } catch (e) {}
+
+      let initialMapping = defaultMapping;
+      try {
+        const savedMapping = localStorage.getItem(MAPPING_STORAGE_KEY);
+        if (savedMapping) initialMapping = JSON.parse(savedMapping);
+      } catch (e) {}
+
+      let initialLudo = '';
+      try {
+        const savedLudo = localStorage.getItem('boardgame_manager_ludo_token');
+        if (savedLudo) initialLudo = savedLudo;
+      } catch (e) {}
+
+      let initialBgg = DEFAULT_BGG_TOKEN;
+      try {
+        const savedBgg = localStorage.getItem('boardgame_manager_bgg_token');
+        if (savedBgg) initialBgg = savedBgg;
+      } catch (e) {}
+
+      if (!user?.id) {
+        if (!isCancelled) {
+          setGames(initialGames);
+          setColumnMapping(initialMapping);
+          setLudoToken(initialLudo);
+          setBggToken(initialBgg);
+          setIsLoading(false);
+          isInitialLoadRef.current = false;
+        }
+        return;
+      }
+
+      // Usuário autenticado: sincronizar com Supabase
+      try {
+        const [cloudGames, cloudSettings] = await Promise.all([
+          fetchUserGames(user.id).catch(() => null),
+          fetchUserSettings(user.id).catch(() => null)
+        ]);
+
+        if (isCancelled) return;
+
+        // Tratar jogos
+        if (cloudGames && cloudGames.length > 0) {
+          setGames(cloudGames);
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(cloudGames));
+          } catch {}
+        } else if (initialGames.length > 0) {
+          // Migração automática dos jogos locais para a nova conta na nuvem
+          setGames(initialGames);
+          await upsertUserGamesBatch(user.id, initialGames).catch(e => console.warn('Erro ao migrar jogos locais para Supabase:', e));
+        } else {
+          setGames([]);
+        }
+
+        // Tratar configurações (tokens e mapeamento)
+        if (cloudSettings) {
+          if (cloudSettings.columnMapping) setColumnMapping(cloudSettings.columnMapping);
+          if (cloudSettings.ludoToken !== undefined) setLudoToken(cloudSettings.ludoToken || '');
+          if (cloudSettings.bggToken !== undefined) setBggToken(cloudSettings.bggToken || DEFAULT_BGG_TOKEN);
+        } else if (initialLudo || initialMapping.name) {
+          setColumnMapping(initialMapping);
+          setLudoToken(initialLudo);
+          setBggToken(initialBgg);
+          await saveUserSettings(user.id, {
+            ludoToken: initialLudo,
+            bggToken: initialBgg,
+            columnMapping: initialMapping
+          }).catch(e => console.warn('Erro ao salvar settings no Supabase:', e));
+        } else {
+          setColumnMapping(initialMapping);
+          setLudoToken(initialLudo);
+          setBggToken(initialBgg);
+        }
+      } catch (err) {
+        console.error('Erro ao conectar ao Supabase:', err);
+        setGames(initialGames);
+        setColumnMapping(initialMapping);
+        setLudoToken(initialLudo);
+        setBggToken(initialBgg);
+      } finally {
+        if (!isCancelled) {
+          setIsLoading(false);
+          isInitialLoadRef.current = false;
         }
       }
-    } catch {}
+    }
 
-    try {
-      const savedMapping = localStorage.getItem(MAPPING_STORAGE_KEY);
-      if (savedMapping) {
-        try {
-          setColumnMapping(JSON.parse(savedMapping));
-        } catch (e) {
-          console.error('Erro ao fazer parse do mapping local', e);
-        }
-      }
-    } catch {}
+    loadData();
 
-    try {
-      const savedLudo = localStorage.getItem('boardgame_manager_ludo_token');
-      if (savedLudo) setLudoToken(savedLudo);
-    } catch {}
+    return () => {
+      isCancelled = true;
+    };
+  }, [user?.id]);
 
-    try {
-      const savedBgg = localStorage.getItem('boardgame_manager_bgg_token');
-      if (savedBgg) setBggToken(savedBgg);
-    } catch {}
-
-    setIsLoading(false);
-  }, []);
-
-  // Salvar no Local Storage sempre que games mudar
+  // Salvar no Local Storage sempre que games mudar (cache offline)
   useEffect(() => {
     if (!isLoading) {
       try {
@@ -103,6 +183,36 @@ export function useCollection() {
       } catch {}
     }
   }, [columnMapping, ludoToken, bggToken, isLoading]);
+
+  // Debounced auto-sync de games com Supabase
+  useEffect(() => {
+    if (!user?.id || isLoading || isInitialLoadRef.current) return;
+
+    const timer = setTimeout(() => {
+      upsertUserGamesBatch(user.id, games).catch(err => {
+        console.error('Erro no auto-sync de jogos com Supabase:', err);
+      });
+    }, 1500);
+
+    return () => clearTimeout(timer);
+  }, [games, user?.id, isLoading]);
+
+  // Salvar configurações no Supabase
+  useEffect(() => {
+    if (!user?.id || isLoading || isInitialLoadRef.current) return;
+
+    const timer = setTimeout(() => {
+      saveUserSettings(user.id, {
+        ludoToken,
+        bggToken,
+        columnMapping
+      }).catch(err => {
+        console.error('Erro ao persistir settings no Supabase:', err);
+      });
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [columnMapping, ludoToken, bggToken, user?.id, isLoading]);
 
   const cancelBatchUpdate = () => {
     if (abortControllerRef.current) {
@@ -1049,14 +1159,34 @@ export function useCollection() {
       id: `manual-${Date.now()}`
     };
     setGames(prev => [...prev, newGame]);
+    if (user?.id) {
+      upsertUserGame(user.id, newGame).catch(e => console.error('Erro ao salvar novo jogo no Supabase:', e));
+    }
   };
 
   const editGame = (id: string, updates: Partial<Omit<GameData, 'id'>>) => {
-    setGames(prev => prev.map(g => (g.id === id ? { ...g, ...updates } : g)));
+    let targetGame: GameData | null = null;
+    setGames(prev => {
+      const updated = prev.map(g => {
+        if (g.id === id) {
+          targetGame = { ...g, ...updates };
+          return targetGame;
+        }
+        return g;
+      });
+      return updated;
+    });
+
+    if (user?.id && targetGame) {
+      upsertUserGame(user.id, targetGame).catch(e => console.error('Erro ao atualizar jogo no Supabase:', e));
+    }
   };
 
   const deleteGame = (id: string) => {
     setGames(prev => prev.filter(g => g.id !== id));
+    if (user?.id) {
+      deleteUserGame(user.id, id).catch(e => console.error('Erro ao excluir jogo do Supabase:', e));
+    }
   };
 
   const clearCollection = () => {
@@ -1064,7 +1194,10 @@ export function useCollection() {
       setGames([]);
       try {
         localStorage.removeItem(STORAGE_KEY);
-      } catch (e) {}
+      } catch {}
+      if (user?.id) {
+        clearUserGames(user.id).catch(e => console.error('Erro ao limpar coleção no Supabase:', e));
+      }
     }
   };
 
