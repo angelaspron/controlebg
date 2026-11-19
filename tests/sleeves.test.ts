@@ -15,6 +15,8 @@ import {
   SLEEVE_SUBTYPES,
   findCompatibleStockItems,
   calculateSleeveDeductionCandidates,
+  getGameSleeveStatus,
+  SLEEVE_STATUS_LABELS,
 } from '../src/utils/sleeveUtils.ts';
 import type { GameData, SleeveStockItem } from '../src/types/index.ts';
 
@@ -1084,6 +1086,105 @@ export async function runSleevesTests(logger: (msg: string) => void): Promise<{ 
     // Cenário 6: Estoque vazio
     const candidates6 = calculateSleeveDeductionCandidates(gameNovo, newSets1, []);
     assert.equal(candidates6.length, 0);
+  });
+
+  // Teste 25: 3 Status de Sleeve: Não Sleevado, Sleevado Parcial e Sleevado
+  test('Três Status de Sleeves: Não Sleevado, Sleevado Parcial e Sleevado', () => {
+    // 1. Cenário Idêntico ao da Imagem do Usuário: 3 tipos de sleeves, 1 sem sleeve e 2 sleevados
+    const userImageGame: GameData = {
+      id: 'g-user-img',
+      name: 'Jogo Parcial da Foto',
+      status: 'Na Coleção',
+      spend: 200,
+      type: 'Base',
+      value: 200,
+      cardSleeves: {
+        sets: [
+          { name: 'Mini Chimera', quantity: 72, width: 43, height: 65, sizeName: 'Mini Chimera', isSleeved: false, sleeveBrand: 'Bucaneiros', sleeveType: 'Normal' },
+          { name: 'Padrão / Standard', quantity: 22, width: 63.5, height: 88, sizeName: 'Padrão', isSleeved: true, sleeveBrand: 'Bucaneiros', sleeveType: 'Normal' },
+          { name: 'Gold', quantity: 1, width: 80, height: 120, sizeName: 'Gold', isSleeved: true, sleeveBrand: 'Meeple Virus', sleeveType: 'Normal' },
+        ]
+      }
+    };
+
+    const statusUserImage = getGameSleeveStatus(userImageGame);
+    assert.equal(statusUserImage, 'partial', 'Jogo com 1 tipo sem sleeve e 2 sleevados deve ter status "partial"');
+    assert.equal(SLEEVE_STATUS_LABELS[statusUserImage], 'Sleevado Parcial', 'Rótulo exibido para partial deve ser "Sleevado Parcial"');
+
+    const summaryUserImage = summarizeGameSleeves(userImageGame.cardSleeves!.sets);
+    assert.equal(summaryUserImage.sleeveStatus, 'partial');
+    assert.equal(summaryUserImage.isSleeved, true, 'isSleeved booleano permanece true para retrocompatibilidade quando há cartas sleevadas');
+
+    // 2. Cenário Totalmente Sleevado (100% dos tipos sleevados)
+    const fullySleevedGame: GameData = {
+      id: 'g-full',
+      name: 'Jogo 100% Sleevado',
+      status: 'Na Coleção',
+      spend: 150,
+      type: 'Base',
+      value: 150,
+      cardSleeves: {
+        sets: [
+          { quantity: 50, width: 63.5, height: 88, isSleeved: true },
+          { quantity: 20, width: 45, height: 68, isSleeved: true }
+        ]
+      }
+    };
+    const statusFull = getGameSleeveStatus(fullySleevedGame);
+    assert.equal(statusFull, 'full', 'Jogo com todos os tipos sleevados deve ter status "full"');
+    assert.equal(SLEEVE_STATUS_LABELS[statusFull], 'Sleevado');
+
+    const summaryFull = summarizeGameSleeves(fullySleevedGame.cardSleeves!.sets);
+    assert.equal(summaryFull.sleeveStatus, 'full');
+    assert.equal(summaryFull.isSleeved, true);
+
+    // 3. Cenário Não Sleevado (0% dos tipos sleevados)
+    const notSleevedGame: GameData = {
+      id: 'g-none',
+      name: 'Jogo Sem Sleeves',
+      status: 'Na Coleção',
+      spend: 100,
+      type: 'Base',
+      value: 100,
+      cardSleeves: {
+        sets: [
+          { quantity: 50, width: 63.5, height: 88, isSleeved: false },
+          { quantity: 20, width: 45, height: 68, isSleeved: false }
+        ]
+      }
+    };
+    const statusNone = getGameSleeveStatus(notSleevedGame);
+    assert.equal(statusNone, 'none', 'Jogo sem nenhum sleeve aplicado deve ter status "none"');
+    assert.equal(SLEEVE_STATUS_LABELS[statusNone], 'Não Sleevado');
+
+    const summaryNone = summarizeGameSleeves(notSleevedGame.cardSleeves!.sets);
+    assert.equal(summaryNone.sleeveStatus, 'none');
+    assert.equal(summaryNone.isSleeved, false);
+
+    // 4. Cenário Jogo Sem Cartas (noCards)
+    const noCardsGame: GameData = {
+      id: 'g-nocards',
+      name: 'Xadrez',
+      status: 'Na Coleção',
+      spend: 50,
+      type: 'Base',
+      value: 50,
+      noCards: true,
+      cardSleeves: { sets: [] }
+    };
+    assert.equal(getGameSleeveStatus(noCardsGame), 'none', 'Jogo noCards deve ter status "none"');
+
+    // 5. Cenário Jogo sem sets cadastrados mas marcado como isSleeved: true
+    const legacySleevedGame: GameData = {
+      id: 'g-legacy',
+      name: 'Jogo Legado',
+      status: 'Na Coleção',
+      spend: 50,
+      type: 'Base',
+      value: 50,
+      isSleeved: true
+    };
+    assert.equal(getGameSleeveStatus(legacySleevedGame), 'full', 'Jogo legado sem sets mas com isSleeved=true deve ser "full"');
   });
 
   return { passed, failed };

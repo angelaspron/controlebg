@@ -38,11 +38,14 @@ export interface GameData {
   // Dados de Sleeves (Compara Jogos & Rastreamento Pessoal)
   cardSleeves?: CardSleevesData;
   isSleeved?: boolean; // Se o jogo já está sleevado na coleção do usuário (geral)
+  sleeveStatus?: GameSleeveStatus; // 'none' (Não Sleevado) | 'partial' (Sleevado Parcial) | 'full' (Sleevado)
   sleeveBrand?: string; // Marca do sleeve usado (ou resumo de marcas)
   sleeveType?: string; // Tipo/espessura (ou resumo de tipos)
   sleevesUsed?: GameSleeveUsage[]; // Lista de múltiplos sleeves/marcas adicionados pelo usuário
   noCards?: boolean; // Se o jogo não possui cartas (ex: Hive, Carcassonne, Xadrez)
 }
+
+export type GameSleeveStatus = 'none' | 'partial' | 'full';
 
 export interface CardSleeveSet {
   name?: string; // Nome do conjunto de cartas (ex: "Reference cards")

@@ -21,7 +21,7 @@ import { fetchBGGThingWithRetry, searchBGGId, DEFAULT_BGG_TOKEN, fetchBGGSleeves
 import { fetchLudopediaData, parseIsPlayedFromLudo, isOwnedInLudopedia } from '../services/ludopediaService';
 import { fetchComparaJogosData, searchBggIdViaCompara } from '../services/comparaService';
 import { matchesGameName, normalizeGameName } from '../utils/nameMatcher';
-import { isGameInCollection } from '../utils/sleeveUtils';
+import { isGameInCollection, getGameSleeveStatus } from '../utils/sleeveUtils';
 
 const getStorageKey = (userId?: string | null) => userId ? `boardgame_manager_data_${userId}` : 'boardgame_manager_data';
 const getMappingStorageKey = (userId?: string | null) => userId ? `boardgame_manager_mapping_${userId}` : 'boardgame_manager_mapping';
@@ -1221,7 +1221,12 @@ export function useCollection(user?: User | null) {
       'Tempo de Partida': g.playtime || '',
       'Jogadores Ideais': g.suggestedPlayers?.summary || '',
       'Prêmios': (g.honors || []).join('; '),
-      'Sleevado': g.noCards ? 'Sem Cartas' : (g.isSleeved ? 'Sim' : 'Não'),
+      'Sleevado': g.noCards 
+        ? 'Sem Cartas' 
+        : (() => {
+            const status = getGameSleeveStatus(g);
+            return status === 'full' ? 'Sim' : status === 'partial' ? 'Parcial' : 'Não';
+          })(),
       'Marca Sleeve': g.sleeveBrand || '',
       'Tipo Sleeve': g.sleeveType || '',
       'Sleeves Necessários': g.noCards ? 'Não possui cartas' : (g.cardSleeves?.sets ? g.cardSleeves.sets.map(s => `${s.quantity}x ${s.sizeName || ''} (${s.width}x${s.height}mm)`).join('; ') : ''),

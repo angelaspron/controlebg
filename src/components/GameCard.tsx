@@ -1,6 +1,7 @@
 import { memo, useCallback } from 'react';
 import type { GameData } from '../types';
 import { Users, Star, Package, Pencil, Brain, Trophy, Award, Loader2, Check, RefreshCw } from 'lucide-react';
+import { getGameSleeveStatus } from '../utils/sleeveUtils';
 
 interface GameCardProps {
   game: GameData;
@@ -24,6 +25,7 @@ export const GameCard = memo(function GameCard({
   // Cores de status
   const isOwned = String(game.status || '').toLowerCase().includes('coleção') || String(game.status || '').toLowerCase().includes('sim');
   const statusColor = isOwned ? 'var(--status-owned)' : 'var(--status-sold)';
+  const sleeveStatus = getGameSleeveStatus(game);
 
   // Lógica financeira
   const spendNum = typeof game.spend === 'string' ? parseFloat(String(game.spend).replace(',', '.')) : Number(game.spend);
@@ -248,7 +250,7 @@ export const GameCard = memo(function GameCard({
             >
               🚫 Sem cartas
             </span>
-          ) : game.isSleeved ? (
+          ) : sleeveStatus === 'full' ? (
             <span
               style={{
                 display: 'inline-flex',
@@ -265,6 +267,24 @@ export const GameCard = memo(function GameCard({
               title={game.sleeveBrand ? `Sleevado (${game.sleeveBrand}${game.sleeveType ? ` - ${game.sleeveType}` : ''})` : 'Jogo Sleevado'}
             >
               🛡️ Sleevado
+            </span>
+          ) : sleeveStatus === 'partial' ? (
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '3px',
+                padding: '1px 6px',
+                borderRadius: '6px',
+                fontSize: '0.72rem',
+                fontWeight: 600,
+                background: 'rgba(245, 158, 11, 0.18)',
+                color: '#fbbf24',
+                border: '1px solid rgba(245, 158, 11, 0.35)'
+              }}
+              title={game.sleeveBrand ? `Sleevado Parcial (${game.sleeveBrand}${game.sleeveType ? ` - ${game.sleeveType}` : ''})` : 'Sleevado Parcial'}
+            >
+              🛡️ Sleevado Parcial
             </span>
           ) : (
             game.cardSleeves?.sets && game.cardSleeves.sets.length > 0 && (

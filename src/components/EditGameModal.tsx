@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { X, Search, Loader2, CheckCircle2, RefreshCw, Dices, ShieldCheck, Plus, Trash2, Layers } from 'lucide-react';
-import type { GameData, CardSleeveSet, GameSleeveUsage, SleeveStockItem } from '../types';
+import React, { useState, useEffect, useMemo } from 'react';
+import { X, Search, Loader2, CheckCircle2, RefreshCw, Dices, ShieldCheck, ShieldAlert, Plus, Trash2, Layers } from 'lucide-react';
+import type { GameData, CardSleeveSet, GameSleeveUsage, SleeveStockItem, GameSleeveStatus } from '../types';
 import '../components.css';
 import { updateSingleGameParallel } from '../services/batchProcessor';
 import { 
@@ -216,8 +216,21 @@ export function EditGameModal({
     }
   }, [game]);
 
+  const currentSleeveStatus: GameSleeveStatus = useMemo(() => {
+    if (editSleeveList.length === 0) {
+      if (game?.sleeveStatus) return game.sleeveStatus;
+      return isSleeved ? 'full' : 'none';
+    }
+    const valid = editSleeveList.filter(item => (item.quantity ?? 1) > 0);
+    const target = valid.length > 0 ? valid : editSleeveList;
+    const sleevedCount = target.filter(item => Boolean(item.isSleeved)).length;
+    if (sleevedCount === 0) return 'none';
+    if (sleevedCount === target.length) return 'full';
+    return 'partial';
+  }, [editSleeveList, isSleeved, game?.sleeveStatus]);
+
   const handleToggleGlobalSleeved = () => {
-    const nextVal = !isSleeved;
+    const nextVal = currentSleeveStatus !== 'full';
     setIsSleeved(nextVal);
     if (editSleeveList.length === 0 && nextVal) {
       const parsedDim = parseModelDimensions(POPULAR_SLEEVE_MODELS[0]);
@@ -387,6 +400,7 @@ export function EditGameModal({
     let updatedCardSleeves = game.cardSleeves;
     let updatedSleevesUsed: GameSleeveUsage[] | undefined = undefined;
     let finalIsSleeved = Boolean(isSleeved);
+    let finalSleeveStatus: GameSleeveStatus = currentSleeveStatus;
     let finalSleeveBrand = isSleeved ? sleeveBrand.trim() : undefined;
     let finalSleeveType = isSleeved ? sleeveType.trim() : undefined;
 
@@ -408,6 +422,7 @@ export function EditGameModal({
         ludoRating: ludoRating ? parseFloat(ludoRating.replace(',', '.')) : undefined,
         noCards: true,
         isSleeved: false,
+        sleeveStatus: 'none',
         sleeveBrand: undefined,
         sleeveType: undefined,
         cardSleeves: { source: 'Manual', sourceUrl: game.cardSleeves?.sourceUrl, sets: [], noCards: true },
@@ -474,6 +489,7 @@ export function EditGameModal({
 
       const summary = summarizeGameSleeves(updatedSets);
       finalIsSleeved = summary.isSleeved;
+      finalSleeveStatus = summary.sleeveStatus;
       finalSleeveBrand = summary.sleeveBrand;
       finalSleeveType = summary.sleeveType;
 
@@ -502,6 +518,7 @@ export function EditGameModal({
       ludoRating: ludoRating ? parseFloat(ludoRating.replace(',', '.')) : undefined,
       noCards: false,
       isSleeved: finalIsSleeved,
+      sleeveStatus: finalSleeveStatus,
       sleeveBrand: finalSleeveBrand,
       sleeveType: finalSleeveType,
       cardSleeves: updatedCardSleeves,
@@ -733,8 +750,22 @@ export function EditGameModal({
               flexDirection: 'column',
               gap: '0.75rem',
               padding: '0.85rem 1.1rem',
-              background: noCards ? 'rgba(148, 163, 184, 0.08)' : (isSleeved ? 'rgba(99, 102, 241, 0.12)' : 'rgba(255, 255, 255, 0.04)'),
-              border: `1px solid ${noCards ? 'rgba(148, 163, 184, 0.25)' : (isSleeved ? 'rgba(99, 102, 241, 0.4)' : 'rgba(255, 255, 255, 0.1)')}`,
+              background: noCards
+                ? 'rgba(148, 163, 184, 0.08)'
+                : currentSleeveStatus === 'full'
+                  ? 'rgba(99, 102, 241, 0.12)'
+                  : currentSleeveStatus === 'partial'
+                    ? 'rgba(245, 158, 11, 0.10)'
+                    : 'rgba(255, 255, 255, 0.04)',
+              border: `1px solid ${
+                noCards
+                  ? 'rgba(148, 163, 184, 0.25)'
+                  : currentSleeveStatus === 'full'
+                    ? 'rgba(99, 102, 241, 0.4)'
+                    : currentSleeveStatus === 'partial'
+                      ? 'rgba(245, 158, 11, 0.35)'
+                      : 'rgba(255, 255, 255, 0.1)'
+              }`,
               borderRadius: '10px',
               transition: 'all 0.2s ease',
             }}
@@ -796,12 +827,33 @@ export function EditGameModal({
               onClick={handleToggleGlobalSleeved}
             >
               <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                <span style={{ fontWeight: 600, fontSize: '0.95rem', color: isSleeved ? '#a5b4fc' : '#f8fafc', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <ShieldCheck size={18} color={isSleeved ? '#818cf8' : 'var(--text-muted)'} />
-                  Status de Sleeve: {isSleeved ? 'Jogo Sleevado' : 'Sem Sleeve'}
+                <span style={{
+                  fontWeight: 600,
+                  fontSize: '0.95rem',
+                  color: currentSleeveStatus === 'full'
+                    ? '#a5b4fc'
+                    : currentSleeveStatus === 'partial'
+                      ? '#fbbf24'
+                      : '#f8fafc',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}>
+                  {currentSleeveStatus === 'full' ? (
+                    <ShieldCheck size={18} color="#818cf8" />
+                  ) : currentSleeveStatus === 'partial' ? (
+                    <ShieldAlert size={18} color="#fbbf24" />
+                  ) : (
+                    <ShieldCheck size={18} color="var(--text-muted)" />
+                  )}
+                  Status de Sleeve: {currentSleeveStatus === 'full' ? 'Sleevado' : currentSleeveStatus === 'partial' ? 'Sleevado Parcial' : 'Não Sleevado'}
                 </span>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                  {isSleeved ? 'Um ou mais tipos de cartas protegidas com sleeves.' : 'Cartas sem sleeves protetores.'}
+                <span style={{ fontSize: '0.8rem', color: currentSleeveStatus === 'partial' ? '#fde68a' : 'var(--text-muted)' }}>
+                  {currentSleeveStatus === 'full'
+                    ? 'Todas as cartas do jogo protegidas com sleeves.'
+                    : currentSleeveStatus === 'partial'
+                      ? 'Parte das cartas do jogo está protegida com sleeves.'
+                      : 'Cartas sem sleeves protetores.'}
                 </span>
               </div>
 
@@ -811,23 +863,35 @@ export function EditGameModal({
               >
                 <input
                   type="checkbox"
-                  checked={isSleeved}
+                  checked={currentSleeveStatus !== 'none'}
                   onChange={handleToggleGlobalSleeved}
                   style={{ opacity: 0, width: 0, height: 0 }}
                 />
                 <span style={{
                   position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-                  backgroundColor: isSleeved ? '#6366f1' : 'rgba(255,255,255,0.2)',
+                  backgroundColor: currentSleeveStatus === 'full'
+                    ? '#6366f1'
+                    : currentSleeveStatus === 'partial'
+                      ? '#f59e0b'
+                      : 'rgba(255,255,255,0.2)',
                   transition: '0.3s',
                   borderRadius: '34px',
-                  boxShadow: isSleeved ? '0 0 10px rgba(99, 102, 241, 0.4)' : 'none'
+                  boxShadow: currentSleeveStatus === 'full'
+                    ? '0 0 10px rgba(99, 102, 241, 0.4)'
+                    : currentSleeveStatus === 'partial'
+                      ? '0 0 10px rgba(245, 158, 11, 0.4)'
+                      : 'none'
                 }}>
                   <span style={{
                     position: 'absolute',
                     content: '""',
                     height: '20px',
                     width: '20px',
-                    left: isSleeved ? '24px' : '3px',
+                    left: currentSleeveStatus === 'full'
+                      ? '24px'
+                      : currentSleeveStatus === 'partial'
+                        ? '14px'
+                        : '3px',
                     bottom: '3px',
                     backgroundColor: 'white',
                     transition: '0.3s',

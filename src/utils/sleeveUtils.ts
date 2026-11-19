@@ -1,4 +1,4 @@
-import type { GameData, SleeveStockItem, CardSleeveSet, GameSleeveUsage } from '../types';
+import type { GameData, SleeveStockItem, CardSleeveSet, GameSleeveUsage, GameSleeveStatus } from '../types';
 
 export interface StandardSleeveSize {
   width: number;
@@ -156,26 +156,72 @@ export function summarizeGameSleeves(
   sets: (CardSleeveSet | GameSleeveUsage)[]
 ): {
   isSleeved: boolean;
+  sleeveStatus: GameSleeveStatus;
   sleeveBrand?: string;
   sleeveType?: string;
 } {
   if (!sets || sets.length === 0) {
-    return { isSleeved: false };
+    return { isSleeved: false, sleeveStatus: 'none' };
   }
 
-  const sleevedList = sets.filter(s => Boolean(s.isSleeved));
+  const validSets = sets.filter(s => (s.quantity ?? 1) > 0);
+  const targetSets = validSets.length > 0 ? validSets : sets;
+  const sleevedList = targetSets.filter(s => Boolean(s.isSleeved));
+
+  let sleeveStatus: GameSleeveStatus = 'none';
+  if (sleevedList.length === 0) {
+    sleeveStatus = 'none';
+  } else if (sleevedList.length === targetSets.length) {
+    sleeveStatus = 'full';
+  } else {
+    sleeveStatus = 'partial';
+  }
+
   const isSleeved = sleevedList.length > 0;
-  const listToInspect = sleevedList.length > 0 ? sleevedList : sets;
+  const listToInspect = sleevedList.length > 0 ? sleevedList : targetSets;
 
   const brands = Array.from(new Set(listToInspect.map(s => s.sleeveBrand?.trim()).filter(Boolean) as string[]));
   const types = Array.from(new Set(listToInspect.map(s => s.sleeveType?.trim()).filter(Boolean) as string[]));
 
   return {
     isSleeved,
+    sleeveStatus,
     sleeveBrand: brands.length > 0 ? brands.join(', ') : undefined,
     sleeveType: types.length > 0 ? types.join(', ') : undefined,
   };
 }
+
+/**
+ * Retorna o status de sleeve do jogo: 'none' (Não Sleevado), 'partial' (Sleevado Parcial) ou 'full' (Sleevado)
+ */
+export function getGameSleeveStatus(game: Partial<GameData> | null | undefined): GameSleeveStatus {
+  if (!game || game.noCards) return 'none';
+
+  const sets: (CardSleeveSet | GameSleeveUsage)[] = 
+    (game.cardSleeves?.sets && game.cardSleeves.sets.length > 0)
+      ? game.cardSleeves.sets
+      : (game.sleevesUsed || []);
+
+  if (sets.length > 0) {
+    const validSets = sets.filter(s => (s.quantity ?? 1) > 0);
+    const targetSets = validSets.length > 0 ? validSets : sets;
+    const sleevedCount = targetSets.filter(s => s.isSleeved !== undefined ? Boolean(s.isSleeved) : Boolean(game.isSleeved)).length;
+
+    if (sleevedCount === 0) return 'none';
+    if (sleevedCount === targetSets.length) return 'full';
+    return 'partial';
+  }
+
+  if (game.sleeveStatus) return game.sleeveStatus;
+  if (game.isSleeved) return 'full';
+  return 'none';
+}
+
+export const SLEEVE_STATUS_LABELS: Record<GameSleeveStatus, string> = {
+  none: 'Não Sleevado',
+  partial: 'Sleevado Parcial',
+  full: 'Sleevado',
+};
 
 export interface CollectionSleeveDemand {
   key: string; // ex: "63.5-88" ou "Padrão"

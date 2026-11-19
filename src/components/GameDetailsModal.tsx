@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Users, Star, Brain, Trophy, Calendar, ExternalLink, Pencil, Tag, Clock, Award, ShieldCheck, RefreshCw, Loader2, Layers, Check, Plus, Trash2 } from 'lucide-react';
-import type { GameData, CardSleeveSet, GameSleeveUsage, SleeveStockItem } from '../types';
+import type { GameData, CardSleeveSet, GameSleeveUsage, SleeveStockItem, GameSleeveStatus } from '../types';
 import { 
   KNOWN_SLEEVE_BRANDS, 
   POPULAR_SLEEVE_MODELS, 
@@ -8,6 +8,7 @@ import {
   formatCardSleeveDimensions, 
   parseModelDimensions, 
   summarizeGameSleeves,
+  getGameSleeveStatus,
   calculateSleeveDeductionCandidates,
   type SleeveDeductionCandidate 
 } from '../utils/sleeveUtils';
@@ -24,6 +25,7 @@ interface GameDetailsModalProps {
     gameId: string, 
     info: { 
       isSleeved: boolean; 
+      sleeveStatus?: GameSleeveStatus;
       sleeveBrand?: string; 
       sleeveType?: string;
       cardSleeves?: { source?: string; sourceUrl?: string; sets: CardSleeveSet[]; noCards?: boolean };
@@ -372,6 +374,7 @@ export function GameDetailsModal({
 
     const sleevePayload = {
       isSleeved: summary.isSleeved,
+      sleeveStatus: summary.sleeveStatus,
       sleeveBrand: summary.sleeveBrand,
       sleeveType: summary.sleeveType,
       cardSleeves: {
@@ -409,6 +412,7 @@ export function GameDetailsModal({
     if (nextNoCards) {
       onSaveSleeveInfo(game.id, {
         isSleeved: false,
+        sleeveStatus: 'none',
         sleeveBrand: undefined,
         sleeveType: undefined,
         cardSleeves: {
@@ -424,6 +428,7 @@ export function GameDetailsModal({
     } else {
       onSaveSleeveInfo(game.id, {
         isSleeved: false,
+        sleeveStatus: 'none',
         noCards: false,
       });
     }
@@ -745,10 +750,63 @@ export function GameDetailsModal({
           {/* Cartas e Sleeves do Jogo (Multi-Sleeve & Compara Jogos) */}
           <section className="board-card-sleeve-section" aria-label="Informações das cartas e sleeves">
             <div className="board-card-sleeve-header">
-              <h3 className="board-card-sleeve-title">
-                <Layers size={17} color="#818cf8" />
-                Cartas e Tamanhos de Sleeves
-              </h3>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <h3 className="board-card-sleeve-title" style={{ margin: 0 }}>
+                  <Layers size={17} color="#818cf8" />
+                  Cartas e Tamanhos de Sleeves
+                </h3>
+                {(() => {
+                  if (noCards) return null;
+                  const currentStatus = getGameSleeveStatus({
+                    ...game,
+                    noCards,
+                    cardSleeves: localSets.length > 0 ? { sets: localSets as any } : game.cardSleeves
+                  });
+                  if (currentStatus === 'full') {
+                    return (
+                      <span style={{
+                        padding: '2px 8px',
+                        borderRadius: '6px',
+                        fontSize: '0.72rem',
+                        fontWeight: 600,
+                        background: 'rgba(99, 102, 241, 0.2)',
+                        color: '#a5b4fc',
+                        border: '1px solid rgba(99, 102, 241, 0.4)'
+                      }}>
+                        🛡️ Sleevado
+                      </span>
+                    );
+                  }
+                  if (currentStatus === 'partial') {
+                    return (
+                      <span style={{
+                        padding: '2px 8px',
+                        borderRadius: '6px',
+                        fontSize: '0.72rem',
+                        fontWeight: 600,
+                        background: 'rgba(245, 158, 11, 0.2)',
+                        color: '#fbbf24',
+                        border: '1px solid rgba(245, 158, 11, 0.4)'
+                      }}>
+                        🛡️ Sleevado Parcial
+                      </span>
+                    );
+                  }
+                  return (
+                    <span style={{
+                      padding: '2px 8px',
+                      borderRadius: '6px',
+                      fontSize: '0.72rem',
+                      fontWeight: 500,
+                      background: 'rgba(255, 255, 255, 0.06)',
+                      color: 'var(--text-muted)',
+                      border: '1px solid rgba(255, 255, 255, 0.1)'
+                    }}>
+                      Não Sleevado
+                    </span>
+                  );
+                })()}
+              </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
                 {onSaveSleeveInfo && (
                   <button

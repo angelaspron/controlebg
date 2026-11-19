@@ -30,6 +30,7 @@ import {
   formatCardSleeveDimensions,
   parseModelDimensions,
   summarizeGameSleeves,
+  getGameSleeveStatus,
   calculateSleeveDeductionCandidates,
   type SleeveDeductionCandidate,
 } from '../utils/sleeveUtils';
@@ -94,7 +95,7 @@ export function SleevesStockTab({
   // Controle de Visualização das Necessidades da Coleção: Por Modelo vs Por Jogo
   const [demandsViewMode, setDemandsViewMode] = useState<'byModel' | 'byGame'>('byModel');
   const [demandSearchTerm, setDemandSearchTerm] = useState('');
-  const [demandFilterStatus, setDemandFilterStatus] = useState<'all' | 'pending' | 'sleeved' | 'no_cards' | 'missing_data'>('all');
+  const [demandFilterStatus, setDemandFilterStatus] = useState<'all' | 'pending' | 'partial' | 'sleeved' | 'no_cards' | 'missing_data'>('all');
 
   // Estado do Modal de Adicionar/Editar
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -366,6 +367,7 @@ export function SleevesStockTab({
     const extraUpdates: Partial<GameData> = {
       noCards: false,
       isSleeved: summary.isSleeved,
+      sleeveStatus: summary.sleeveStatus,
       sleeveBrand: summary.sleeveBrand,
       sleeveType: summary.sleeveType,
     };
@@ -495,8 +497,11 @@ export function SleevesStockTab({
       );
 
       if (demandFilterStatus === 'missing_data') return !hasSleevesData;
-      if (demandFilterStatus === 'pending') return hasSleevesData && !g.isSleeved;
-      if (demandFilterStatus === 'sleeved') return hasSleevesData && Boolean(g.isSleeved);
+
+      const sleeveStatus = getGameSleeveStatus(g);
+      if (demandFilterStatus === 'pending') return hasSleevesData && sleeveStatus === 'none';
+      if (demandFilterStatus === 'partial') return hasSleevesData && sleeveStatus === 'partial';
+      if (demandFilterStatus === 'sleeved') return hasSleevesData && sleeveStatus === 'full';
 
       return true;
     });
@@ -511,7 +516,8 @@ export function SleevesStockTab({
     const totalCardsInCollection = collectionDemands.reduce((sum, d) => sum + d.totalCards, 0);
     const neededCardsInCollection = collectionDemands.reduce((sum, d) => sum + d.neededCards, 0);
 
-    const sleevedGamesCount = ownedGames.filter(g => !g.noCards && Boolean(g.isSleeved)).length;
+    const sleevedGamesCount = ownedGames.filter(g => !g.noCards && getGameSleeveStatus(g) === 'full').length;
+    const partialSleevedGamesCount = ownedGames.filter(g => !g.noCards && getGameSleeveStatus(g) === 'partial').length;
 
     return {
       totalSleeves,
@@ -522,6 +528,7 @@ export function SleevesStockTab({
       totalOwnedGames: ownedGames.length,
       gamesWithoutCardsCount: gamesWithoutCards.length,
       sleevedGamesCount,
+      partialSleevedGamesCount,
     };
   }, [stock, collectionDemands, ownedGames, gamesWithoutCards]);
 
@@ -677,12 +684,17 @@ export function SleevesStockTab({
           <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '0.35rem' }}>
             Jogos Sleevados
           </div>
-          <div style={{ fontSize: '1.9rem', fontWeight: 700, color: '#34d399' }}>
-            {stats.sleevedGamesCount} / {Math.max(0, stats.totalOwnedGames - (stats.gamesWithoutCardsCount || 0))}
+          <div style={{ fontSize: '1.9rem', fontWeight: 700, color: '#34d399', display: 'flex', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap' }}>
+            <span>{stats.sleevedGamesCount} / {Math.max(0, stats.totalOwnedGames - (stats.gamesWithoutCardsCount || 0))}</span>
+            {stats.partialSleevedGamesCount > 0 && (
+              <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#fbbf24' }}>
+                ({stats.partialSleevedGamesCount} parcial)
+              </span>
+            )}
           </div>
           <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>
             {stats.totalOwnedGames - (stats.gamesWithoutCardsCount || 0) > 0 
-              ? `${Math.round((stats.sleevedGamesCount / (stats.totalOwnedGames - (stats.gamesWithoutCardsCount || 0))) * 100)}% da coleção c/ cartas` 
+              ? `${Math.round((stats.sleevedGamesCount / (stats.totalOwnedGames - (stats.gamesWithoutCardsCount || 0))) * 100)}% 100% sleevado` 
               : '0% protegido'}
             {stats.gamesWithoutCardsCount > 0 && ` (${stats.gamesWithoutCardsCount} s/ cartas)`}
           </div>
@@ -1176,7 +1188,8 @@ export function SleevesStockTab({
                 onChange={e => setDemandFilterStatus(e.target.value as any)}
               >
                 <option value="all">Todos os Status</option>
-                <option value="pending">Faltam Sleeves</option>
+                <option value="pending">Não Sleevados</option>
+                <option value="partial">Sleevado Parcial</option>
                 <option value="sleeved">100% Sleevados</option>
                 {demandsViewMode === 'byGame' && (
                   <>
@@ -1486,6 +1499,58 @@ export function SleevesStockTab({
                                 <span style={{ fontSize: '0.7rem', background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.3)', padding: '1px 6px', borderRadius: '4px', fontWeight: 600 }}>
                                   🃏 {totalCards} cartas
                                 </span>
+                                {(() => {
+                                  const status = getGameSleeveStatus(game);
+                                  if (status === 'full') {
+                                    return (
+                                      <span style={{
+                                        fontSize: '0.68rem',
+                                        background: 'rgba(99, 102, 241, 0.15)',
+                                        color: '#a5b4fc',
+                                        border: '1px solid rgba(99, 102, 241, 0.35)',
+                                        padding: '1px 6px',
+                                        borderRadius: '4px',
+                                        fontWeight: 600,
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '3px'
+                                      }}>
+                                        🛡️ Sleevado
+                                      </span>
+                                    );
+                                  }
+                                  if (status === 'partial') {
+                                    return (
+                                      <span style={{
+                                        fontSize: '0.68rem',
+                                        background: 'rgba(245, 158, 11, 0.15)',
+                                        color: '#fbbf24',
+                                        border: '1px solid rgba(245, 158, 11, 0.35)',
+                                        padding: '1px 6px',
+                                        borderRadius: '4px',
+                                        fontWeight: 600,
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '3px'
+                                      }}>
+                                        🛡️ Sleevado Parcial
+                                      </span>
+                                    );
+                                  }
+                                  return (
+                                    <span style={{
+                                      fontSize: '0.68rem',
+                                      background: 'rgba(255, 255, 255, 0.06)',
+                                      color: 'var(--text-muted)',
+                                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                                      padding: '1px 6px',
+                                      borderRadius: '4px',
+                                      fontWeight: 500
+                                    }}>
+                                      Não Sleevado
+                                    </span>
+                                  );
+                                })()}
                                 {game.cardSleeves?.source && (() => {
                                   const src = game.cardSleeves.source;
                                   const isManual = src === 'Manual';
