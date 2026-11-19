@@ -863,5 +863,36 @@ select option {
   color: #0f172a !important;
 }
 
+/* Card de Estoque de Sleeves & Títulos no Tema Claro */
+.sleeve-brand-badge {
+  background: rgba(99, 102, 241, 0.18);
+  color: #a5b4fc;
+  border: 1px solid rgba(99, 102, 241, 0.35);
+}
+
+[data-theme="light"] .sleeve-brand-badge {
+  background: rgba(99, 102, 241, 0.12);
+  color: #4338ca;
+  border: 1px solid rgba(99, 102, 241, 0.3);
+}
+
+.sleeve-stock-qty-box {
+  background: rgba(0, 0, 0, 0.25);
+}
+
+[data-theme="light"] .sleeve-stock-qty-box {
+  background: #f1f5f9 !important;
+  border: 1px solid rgba(226, 232, 240, 0.9) !important;
+}
+
+[data-theme="light"] .sleeve-card-title,
+[data-theme="light"] .glass-panel h4,
+[data-theme="light"] .glass-panel h3,
+[data-theme="light"] .glass-panel h2,
+[data-theme="light"] .glass-panel h1 {
+  color: #0f172a !important;
+}
+
+
 
 

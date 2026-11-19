@@ -518,8 +518,8 @@ function App() {
                 <div style={{color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '0.5rem'}}>Total de Jogos</div>
                 <div style={{fontSize: '2rem', fontWeight: 700}}>{games.length}</div>
                 <div style={{fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '0.5rem', display: 'flex', justifyContent: 'space-between'}}>
-                  <span>Coleção: <strong style={{color: '#fff'}}>{totals.totalInCollection}</strong></span>
-                  <span>Vendido: <strong style={{color: '#fff'}}>{totals.totalSold}</strong></span>
+                  <span>Coleção: <strong style={{color: 'var(--text-main)'}}>{totals.totalInCollection}</strong></span>
+                  <span>Vendido: <strong style={{color: 'var(--text-main)'}}>{totals.totalSold}</strong></span>
                 </div>
               </div>
 

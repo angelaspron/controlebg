@@ -824,19 +824,19 @@ export function SleevesStockTab({
                     {/* Header do Card */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem' }}>
                       <div>
-                        <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 600, color: '#fff' }}>
+                        <h4 className="sleeve-card-title" style={{ margin: 0, fontSize: '1.05rem', fontWeight: 600, color: 'var(--text-main)' }}>
                           {item.model}
                         </h4>
                         <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.35rem', flexWrap: 'wrap' }}>
-                          <span style={{ 
-                            background: 'rgba(99, 102, 241, 0.18)', 
-                            color: '#a5b4fc', 
-                            border: '1px solid rgba(99, 102, 241, 0.35)', 
-                            padding: '2px 8px', 
-                            borderRadius: '6px', 
-                            fontSize: '0.75rem', 
-                            fontWeight: 600 
-                          }}>
+                          <span 
+                            className="sleeve-brand-badge"
+                            style={{ 
+                              padding: '2px 8px', 
+                              borderRadius: '6px', 
+                              fontSize: '0.75rem', 
+                              fontWeight: 600 
+                            }}
+                          >
                             {item.brand}
                           </span>
                           {item.type && (
@@ -875,16 +875,18 @@ export function SleevesStockTab({
                     </div>
 
                     {/* Quantidade & Ajustes Rápidos */}
-                    <div style={{ 
-                      background: 'rgba(0, 0, 0, 0.25)', 
-                      padding: '0.75rem 1rem', 
-                      borderRadius: '10px', 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      justifyContent: 'space-between',
-                      flexWrap: 'wrap',
-                      gap: '0.5rem'
-                    }}>
+                    <div 
+                      className="sleeve-stock-qty-box"
+                      style={{ 
+                        padding: '0.75rem 1rem', 
+                        borderRadius: '10px', 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'space-between',
+                        flexWrap: 'wrap',
+                        gap: '0.5rem'
+                      }}
+                    >
                       <div>
                         <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>Quantidade em Estoque</span>
                         <strong style={{ fontSize: '1.6rem', color: item.quantity > 0 ? '#38bdf8' : '#f87171', fontWeight: 700 }}>
@@ -940,7 +942,7 @@ export function SleevesStockTab({
                       <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '0.5rem' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
                           <span>Demanda da Coleção:</span>
-                          <strong style={{ color: '#fff' }}>{matchedDemand.neededCards} cartas pendentes</strong>
+                          <strong style={{ color: 'var(--text-main)' }}>{matchedDemand.neededCards} cartas pendentes</strong>
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                           <span>Saldo p/ pendentes:</span>
@@ -1054,7 +1056,7 @@ export function SleevesStockTab({
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <RefreshCw size={16} color="#818cf8" className="animate-spin" />
-                  <strong style={{ color: '#fff', fontSize: '0.92rem' }}>
+                  <strong style={{ color: 'var(--text-main)', fontSize: '0.92rem' }}>
                     Consultando API (Compara Jogos / Ludopedia / BGG)...
                   </strong>
                 </div>
@@ -1165,7 +1167,7 @@ export function SleevesStockTab({
           {collectionDemands.length === 0 && !isFetchingSleeves ? (
             <div className="glass-panel" style={{ textAlign: 'center', padding: '4rem 2rem' }}>
               <ShieldCheck size={56} color="#818cf8" style={{ opacity: 0.8, margin: '0 auto 1.25rem auto' }} />
-              <h3 style={{ fontSize: '1.35rem', marginBottom: '0.5rem', color: '#fff' }}>
+              <h3 style={{ fontSize: '1.35rem', marginBottom: '0.5rem', color: 'var(--text-main)' }}>
                 Nenhum dado de sleeve encontrado na coleção
               </h3>
               <p style={{ color: 'var(--text-muted)', maxWidth: '480px', margin: '0 auto 1.75rem auto', fontSize: '0.92rem', lineHeight: '1.5' }}>
@@ -1217,7 +1219,7 @@ export function SleevesStockTab({
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
                         <div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
-                            <h4 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600, color: '#fff' }}>
+                            <h4 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-main)' }}>
                               {demand.modelName}
                             </h4>
                             <span style={{ 
@@ -1240,7 +1242,7 @@ export function SleevesStockTab({
                         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
                           <div style={{ textAlign: 'right' }}>
                             <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>Cartas Pendentes / Total</span>
-                            <strong style={{ fontSize: '1.05rem', color: '#fff' }}>
+                            <strong style={{ fontSize: '1.05rem', color: 'var(--text-main)' }}>
                               {demand.neededCards} <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>/ {demand.totalCards}</span>
                             </strong>
                           </div>
@@ -1358,7 +1360,7 @@ export function SleevesStockTab({
                                 }}
                               >
                                 <div style={{ minWidth: 0 }}>
-                                  <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                     {g.name}
                                   </div>
                                   <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
@@ -1440,7 +1442,7 @@ export function SleevesStockTab({
                         )}
 
                         <div style={{ flexGrow: 1, minWidth: 0 }}>
-                          <h4 style={{ margin: '0 0 2px 0', fontSize: '1rem', fontWeight: 600, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          <h4 style={{ margin: '0 0 2px 0', fontSize: '1rem', fontWeight: 600, color: 'var(--text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {game.name}
                           </h4>
                           <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -1709,7 +1711,7 @@ export function SleevesStockTab({
             onClick={e => e.stopPropagation()}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-              <h3 style={{ margin: 0, fontSize: '1.25rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <h3 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Package size={20} color="var(--accent)" />
                 {editingItem ? 'Editar Sleeve no Estoque' : 'Novo Sleeve no Estoque'}
               </h3>
@@ -1932,7 +1934,7 @@ export function SleevesStockTab({
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <ShieldCheck size={22} color="#10b981" />
-                  <h3 style={{ margin: 0, fontSize: '1.2rem', color: '#fff' }}>
+                  <h3 style={{ margin: 0, fontSize: '1.2rem', color: 'var(--text-main)' }}>
                     Sleeves: {editingSleevesGame.name}
                   </h3>
                 </div>
