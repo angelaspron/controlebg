@@ -23,8 +23,10 @@ import { fetchComparaJogosData, searchBggIdViaCompara } from '../services/compar
 import { matchesGameName, normalizeGameName } from '../utils/nameMatcher';
 import { isGameInCollection } from '../utils/sleeveUtils';
 
-const STORAGE_KEY = 'boardgame_manager_data';
-const MAPPING_STORAGE_KEY = 'boardgame_manager_mapping';
+const getStorageKey = (userId?: string | null) => userId ? `boardgame_manager_data_${userId}` : 'boardgame_manager_data';
+const getMappingStorageKey = (userId?: string | null) => userId ? `boardgame_manager_mapping_${userId}` : 'boardgame_manager_mapping';
+const getLudoTokenStorageKey = (userId?: string | null) => userId ? `boardgame_manager_ludo_token_${userId}` : 'boardgame_manager_ludo_token';
+const getBggTokenStorageKey = (userId?: string | null) => userId ? `boardgame_manager_bgg_token_${userId}` : 'boardgame_manager_bgg_token';
 
 const defaultMapping: ColumnMapping = {
   name: '',
@@ -59,10 +61,23 @@ export function useCollection(user?: User | null) {
     async function loadData() {
       setIsLoading(true);
 
-      // Ler dados do localStorage como ponto de partida
+      if (!user?.id) {
+        if (!isCancelled) {
+          setGames([]);
+          setColumnMapping(defaultMapping);
+          setLudoToken('');
+          setBggToken(DEFAULT_BGG_TOKEN);
+          setIsLoading(false);
+          isInitialLoadRef.current = false;
+        }
+        return;
+      }
+
+      // Ler dados do localStorage como ponto de partida específico deste usuário
+      const storageKey = getStorageKey(user.id);
       let initialGames: GameData[] = [];
       try {
-        const saved = localStorage.getItem(STORAGE_KEY);
+        const saved = localStorage.getItem(storageKey);
         if (saved) {
           const parsed = JSON.parse(saved);
           if (Array.isArray(parsed)) {
@@ -73,33 +88,21 @@ export function useCollection(user?: User | null) {
 
       let initialMapping = defaultMapping;
       try {
-        const savedMapping = localStorage.getItem(MAPPING_STORAGE_KEY);
+        const savedMapping = localStorage.getItem(getMappingStorageKey(user.id));
         if (savedMapping) initialMapping = JSON.parse(savedMapping);
       } catch (e) {}
 
       let initialLudo = '';
       try {
-        const savedLudo = localStorage.getItem('boardgame_manager_ludo_token');
+        const savedLudo = localStorage.getItem(getLudoTokenStorageKey(user.id));
         if (savedLudo) initialLudo = savedLudo;
       } catch (e) {}
 
       let initialBgg = DEFAULT_BGG_TOKEN;
       try {
-        const savedBgg = localStorage.getItem('boardgame_manager_bgg_token');
+        const savedBgg = localStorage.getItem(getBggTokenStorageKey(user.id));
         if (savedBgg) initialBgg = savedBgg;
       } catch (e) {}
-
-      if (!user?.id) {
-        if (!isCancelled) {
-          setGames(initialGames);
-          setColumnMapping(initialMapping);
-          setLudoToken(initialLudo);
-          setBggToken(initialBgg);
-          setIsLoading(false);
-          isInitialLoadRef.current = false;
-        }
-        return;
-      }
 
       // Usuário autenticado: sincronizar com Supabase
       try {
@@ -114,10 +117,10 @@ export function useCollection(user?: User | null) {
         if (cloudGames && cloudGames.length > 0) {
           setGames(cloudGames);
           try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(cloudGames));
+            localStorage.setItem(storageKey, JSON.stringify(cloudGames));
           } catch {}
         } else if (initialGames.length > 0) {
-          // Migração automática dos jogos locais para a nova conta na nuvem
+          // Migração dos dados locais específicos deste usuário para a nuvem
           setGames(initialGames);
           await upsertUserGamesBatch(user.id, initialGames).catch(e => console.warn('Erro ao migrar jogos locais para Supabase:', e));
         } else {
@@ -164,25 +167,25 @@ export function useCollection(user?: User | null) {
     };
   }, [user?.id]);
 
-  // Salvar no Local Storage sempre que games mudar (cache offline)
+  // Salvar no Local Storage sempre que games mudar (cache offline específico do usuário)
   useEffect(() => {
-    if (!isLoading) {
+    if (!isLoading && user?.id) {
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(games));
+        localStorage.setItem(getStorageKey(user.id), JSON.stringify(games));
       } catch {}
     }
-  }, [games, isLoading]);
+  }, [games, isLoading, user?.id]);
 
-  // Salvar mapping e tokens no Local Storage
+  // Salvar mapping e tokens no Local Storage específico do usuário
   useEffect(() => {
-    if (!isLoading) {
+    if (!isLoading && user?.id) {
       try {
-        localStorage.setItem(MAPPING_STORAGE_KEY, JSON.stringify(columnMapping));
-        localStorage.setItem('boardgame_manager_ludo_token', ludoToken);
-        localStorage.setItem('boardgame_manager_bgg_token', bggToken);
+        localStorage.setItem(getMappingStorageKey(user.id), JSON.stringify(columnMapping));
+        localStorage.setItem(getLudoTokenStorageKey(user.id), ludoToken);
+        localStorage.setItem(getBggTokenStorageKey(user.id), bggToken);
       } catch {}
     }
-  }, [columnMapping, ludoToken, bggToken, isLoading]);
+  }, [columnMapping, ludoToken, bggToken, isLoading, user?.id]);
 
   // Debounced auto-sync de games com Supabase
   useEffect(() => {
@@ -1193,7 +1196,7 @@ export function useCollection(user?: User | null) {
     if (window.confirm('Tem certeza que deseja apagar toda a coleção?')) {
       setGames([]);
       try {
-        localStorage.removeItem(STORAGE_KEY);
+        localStorage.removeItem(getStorageKey(user?.id));
       } catch {}
       if (user?.id) {
         clearUserGames(user.id).catch(e => console.error('Erro ao limpar coleção no Supabase:', e));

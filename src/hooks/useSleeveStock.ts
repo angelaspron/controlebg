@@ -9,24 +9,10 @@ import {
   clearUserSleeveStock 
 } from '../lib/supabase';
 
-const SLEEVE_STOCK_STORAGE_KEY = 'boardgame_manager_sleeve_stock';
+const getSleeveStorageKey = (userId?: string | null) => userId ? `boardgame_manager_sleeve_stock_${userId}` : 'boardgame_manager_sleeve_stock';
 
 export function useSleeveStock(user?: User | null) {
-  const [stock, setStockState] = useState<SleeveStockItem[]>(() => {
-    try {
-      const saved = localStorage.getItem(SLEEVE_STOCK_STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          return parsed;
-        }
-      }
-    } catch (e) {
-      console.error('Erro ao ler estoque de sleeves do localStorage:', e);
-    }
-    return [];
-  });
-
+  const [stock, setStockState] = useState<SleeveStockItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const isInitialLoadRef = useRef(true);
 
@@ -36,11 +22,13 @@ export function useSleeveStock(user?: User | null) {
 
     async function loadStock() {
       if (!user?.id) {
+        setStockState([]);
         setIsLoading(false);
         return;
       }
 
       setIsLoading(true);
+      const storageKey = getSleeveStorageKey(user.id);
       try {
         const cloudStock = await fetchUserSleeveStock(user.id);
         if (isCancelled) return;
@@ -48,11 +36,11 @@ export function useSleeveStock(user?: User | null) {
         if (cloudStock && cloudStock.length > 0) {
           setStockState(cloudStock);
           try {
-            localStorage.setItem(SLEEVE_STOCK_STORAGE_KEY, JSON.stringify(cloudStock));
+            localStorage.setItem(storageKey, JSON.stringify(cloudStock));
           } catch {}
         } else {
-          // Se na nuvem estiver vazio mas houver dados locais, migra automaticamente
-          const localSaved = localStorage.getItem(SLEEVE_STOCK_STORAGE_KEY);
+          // Se na nuvem estiver vazio mas houver dados locais deste usuário, migra automaticamente
+          const localSaved = localStorage.getItem(storageKey);
           if (localSaved) {
             try {
               const parsed = JSON.parse(localSaved);
@@ -61,6 +49,8 @@ export function useSleeveStock(user?: User | null) {
                 await upsertUserSleeveStockBatch(user.id, parsed);
               }
             } catch {}
+          } else {
+            setStockState([]);
           }
         }
       } catch (e) {
@@ -80,14 +70,16 @@ export function useSleeveStock(user?: User | null) {
     };
   }, [user?.id]);
 
-  // Salvar no localStorage sempre que o estoque mudar
+  // Salvar no localStorage específico do usuário sempre que o estoque mudar
   useEffect(() => {
-    try {
-      localStorage.setItem(SLEEVE_STOCK_STORAGE_KEY, JSON.stringify(stock));
-    } catch (e) {
-      console.error('Erro ao salvar estoque de sleeves no localStorage:', e);
+    if (!isLoading && user?.id) {
+      try {
+        localStorage.setItem(getSleeveStorageKey(user.id), JSON.stringify(stock));
+      } catch (e) {
+        console.error('Erro ao salvar estoque de sleeves no localStorage:', e);
+      }
     }
-  }, [stock]);
+  }, [stock, isLoading, user?.id]);
 
   // Debounced auto-sync com Supabase para garantir integridade
   useEffect(() => {
@@ -169,11 +161,46 @@ export function useSleeveStock(user?: User | null) {
     }
   };
 
+  const deductStockBatch = (deductions: { stockItemId: string; quantity: number }[]) => {
+    if (!deductions || deductions.length === 0) return;
+
+    const deductionMap = new Map<string, number>();
+    for (const d of deductions) {
+      if (d.stockItemId && d.quantity > 0) {
+        deductionMap.set(d.stockItemId, (deductionMap.get(d.stockItemId) || 0) + d.quantity);
+      }
+    }
+
+    if (deductionMap.size === 0) return;
+
+    const updatedItems: SleeveStockItem[] = [];
+    setStockState(prev =>
+      prev.map(item => {
+        const deductQty = deductionMap.get(item.id);
+        if (!deductQty) return item;
+        const newQty = Math.max(0, (item.quantity || 0) - deductQty);
+        const updated = {
+          ...item,
+          quantity: newQty,
+          updatedAt: new Date().toISOString(),
+        };
+        updatedItems.push(updated);
+        return updated;
+      })
+    );
+
+    if (user?.id && updatedItems.length > 0) {
+      upsertUserSleeveStockBatch(user.id, updatedItems).catch(e => {
+        console.error('Erro ao salvar lote de sleeves descontados no Supabase:', e);
+      });
+    }
+  };
+
   const clearStock = () => {
     if (window.confirm('Tem certeza que deseja limpar todo o seu estoque de sleeves?')) {
       setStockState([]);
       try {
-        localStorage.removeItem(SLEEVE_STOCK_STORAGE_KEY);
+        localStorage.removeItem(getSleeveStorageKey(user?.id));
       } catch {}
 
       if (user?.id) {
@@ -200,6 +227,7 @@ export function useSleeveStock(user?: User | null) {
     updateStockItem,
     deleteStockItem,
     adjustQuantity,
+    deductStockBatch,
     clearStock,
     setStock,
   };

@@ -1,7 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { X, Users, Star, Brain, Trophy, Calendar, ExternalLink, Pencil, Tag, Clock, Award, ShieldCheck, RefreshCw, Loader2, Layers, Check, Plus, Trash2 } from 'lucide-react';
-import type { GameData, CardSleeveSet, GameSleeveUsage } from '../types';
-import { KNOWN_SLEEVE_BRANDS, POPULAR_SLEEVE_MODELS, SLEEVE_SUBTYPES, formatCardSleeveDimensions, parseModelDimensions, summarizeGameSleeves } from '../utils/sleeveUtils';
+import type { GameData, CardSleeveSet, GameSleeveUsage, SleeveStockItem } from '../types';
+import { 
+  KNOWN_SLEEVE_BRANDS, 
+  POPULAR_SLEEVE_MODELS, 
+  SLEEVE_SUBTYPES, 
+  formatCardSleeveDimensions, 
+  parseModelDimensions, 
+  summarizeGameSleeves,
+  calculateSleeveDeductionCandidates,
+  type SleeveDeductionCandidate 
+} from '../utils/sleeveUtils';
+import { DeductSleevesModal } from './DeductSleevesModal';
 import '../components.css';
 
 interface GameDetailsModalProps {
@@ -22,6 +32,8 @@ interface GameDetailsModalProps {
     }
   ) => void;
   isUpdating?: boolean;
+  sleeveStock?: SleeveStockItem[];
+  onDeductSleeveStock?: (deductions: { stockItemId: string; quantity: number }[]) => void;
 }
 
 interface LocalSleeveSetItem {
@@ -42,7 +54,17 @@ interface LocalSleeveSetItem {
   customModel?: string;
 }
 
-export function GameDetailsModal({ game, isOpen, onClose, onEdit, onRefresh, onSaveSleeveInfo, isUpdating }: GameDetailsModalProps) {
+export function GameDetailsModal({ 
+  game, 
+  isOpen, 
+  onClose, 
+  onEdit, 
+  onRefresh, 
+  onSaveSleeveInfo, 
+  isUpdating,
+  sleeveStock,
+  onDeductSleeveStock
+}: GameDetailsModalProps) {
   const [isRefreshingLocal, setIsRefreshingLocal] = useState(false);
 
   // Estados locais para controle de múltiplos tipos de sleeves deste jogo
@@ -50,8 +72,13 @@ export function GameDetailsModal({ game, isOpen, onClose, onEdit, onRefresh, onS
   const [noCards, setNoCards] = useState(false);
   const [hasSleeveChanges, setHasSleeveChanges] = useState(false);
   const [sleeveSavedFeedback, setSleeveSavedFeedback] = useState(false);
+  const [sleeveSavedMessage, setSleeveSavedMessage] = useState('Salvo com sucesso!');
+  const [pendingSleeveInfo, setPendingSleeveInfo] = useState<{ id: string; info: any } | null>(null);
+  const [deductionCandidates, setDeductionCandidates] = useState<SleeveDeductionCandidate[]>([]);
 
   useEffect(() => {
+    setPendingSleeveInfo(null);
+    setDeductionCandidates([]);
     if (!game) return;
 
     const items: LocalSleeveSetItem[] = [];
@@ -343,7 +370,7 @@ export function GameDetailsModal({ game, isOpen, onClose, onEdit, onRefresh, onS
 
     const summary = summarizeGameSleeves(updatedSets);
 
-    onSaveSleeveInfo(game.id, {
+    const sleevePayload = {
       isSleeved: summary.isSleeved,
       sleeveBrand: summary.sleeveBrand,
       sleeveType: summary.sleeveType,
@@ -355,10 +382,22 @@ export function GameDetailsModal({ game, isOpen, onClose, onEdit, onRefresh, onS
       },
       sleevesUsed,
       noCards: false,
-    });
+    };
+
+    if (sleeveStock && sleeveStock.length > 0 && updatedSets.length > 0) {
+      const candidates = calculateSleeveDeductionCandidates(game, updatedSets, sleeveStock);
+      if (candidates.length > 0) {
+        setPendingSleeveInfo({ id: game.id, info: sleevePayload });
+        setDeductionCandidates(candidates);
+        return;
+      }
+    }
+
+    onSaveSleeveInfo(game.id, sleevePayload);
 
     setNoCards(false);
     setHasSleeveChanges(false);
+    setSleeveSavedMessage('Salvo com sucesso!');
     setSleeveSavedFeedback(true);
     setTimeout(() => setSleeveSavedFeedback(false), 3000);
   };
@@ -1075,7 +1114,7 @@ export function GameDetailsModal({ game, isOpen, onClose, onEdit, onRefresh, onS
                       )}
                       {sleeveSavedFeedback && (
                         <span style={{ fontSize: '0.82rem', color: '#34d399', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
-                          <Check size={15} /> Salvo com sucesso!
+                          <Check size={15} /> {sleeveSavedMessage}
                         </span>
                       )}
 
@@ -1188,6 +1227,47 @@ export function GameDetailsModal({ game, isOpen, onClose, onEdit, onRefresh, onS
 
         </div>
       </div>
+
+      {pendingSleeveInfo && deductionCandidates.length > 0 && (
+        <DeductSleevesModal
+          isOpen={true}
+          gameName={game.name}
+          candidates={deductionCandidates}
+          stock={sleeveStock || []}
+          onConfirm={(deductions) => {
+            if (onDeductSleeveStock) {
+              onDeductSleeveStock(deductions);
+            }
+            if (onSaveSleeveInfo) {
+              onSaveSleeveInfo(pendingSleeveInfo.id, pendingSleeveInfo.info);
+            }
+            const totalDeducted = deductions.reduce((s, d) => s + d.quantity, 0);
+            setPendingSleeveInfo(null);
+            setDeductionCandidates([]);
+            setNoCards(false);
+            setHasSleeveChanges(false);
+            setSleeveSavedMessage(`Salvo com sucesso! ${totalDeducted} sleeve(s) descontado(s) do estoque.`);
+            setSleeveSavedFeedback(true);
+            setTimeout(() => setSleeveSavedFeedback(false), 3500);
+          }}
+          onSkip={() => {
+            if (onSaveSleeveInfo) {
+              onSaveSleeveInfo(pendingSleeveInfo.id, pendingSleeveInfo.info);
+            }
+            setPendingSleeveInfo(null);
+            setDeductionCandidates([]);
+            setNoCards(false);
+            setHasSleeveChanges(false);
+            setSleeveSavedMessage('Salvo com sucesso!');
+            setSleeveSavedFeedback(true);
+            setTimeout(() => setSleeveSavedFeedback(false), 3000);
+          }}
+          onCancel={() => {
+            setPendingSleeveInfo(null);
+            setDeductionCandidates([]);
+          }}
+        />
+      )}
     </div>
   );
 }

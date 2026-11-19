@@ -309,7 +309,7 @@ export function computeCollectionSleeveDemands(games: GameData[]): CollectionSle
         : (standardMatch ? standardMatch.name : getCardSleeveSizeName(width, height, (set as any).sleeveProductName));
       const dimensions = formatCardSleeveDimensions(canonicalWidth, canonicalHeight);
       // Chave única para agrupar tamanhos equivalentes
-      const key = `${Math.round(canonicalWidth * 2) / 2}x${Math.round(canonicalHeight)}`;
+      const key = getCanonicalDimensionKey(canonicalWidth, canonicalHeight);
 
       let item = demandMap.get(key);
       if (!item) {
@@ -373,4 +373,206 @@ export function matchStockToDemand(stockItem: SleeveStockItem, demands: Collecti
 
     return false;
   });
+}
+
+/**
+ * Retorna uma chave canônica para agrupar dimensões equivalentes
+ */
+export function getCanonicalDimensionKey(width: number, height: number): string {
+  const standardMatch = STANDARD_SLEEVE_SIZES.find(s => 
+    isApprox(width, s.width, 0.8) && isApprox(height, s.height, 1.8)
+  );
+  const canonicalWidth = standardMatch ? standardMatch.width : width;
+  const canonicalHeight = standardMatch ? standardMatch.height : height;
+  return `${Math.round(canonicalWidth * 2) / 2}x${Math.round(canonicalHeight)}`;
+}
+
+/**
+ * Encontra itens em estoque compatíveis com um determinado sleeve de jogo,
+ * ordenando pelo melhor match (marca, tipo, dimensões e disponibilidade).
+ */
+export function findCompatibleStockItems(
+  sleeve: { width: number; height: number; sizeName?: string; sleeveBrand?: string; sleeveType?: string; quantity?: number },
+  stock: SleeveStockItem[]
+): { item: SleeveStockItem; score: number }[] {
+  if (!stock || stock.length === 0) return [];
+
+  const results: { item: SleeveStockItem; score: number }[] = [];
+  const reqWidth = Number(sleeve.width) || 0;
+  const reqHeight = Number(sleeve.height) || 0;
+  const reqBrand = (sleeve.sleeveBrand || '').trim().toLowerCase();
+  const reqType = (sleeve.sleeveType || '').trim().toLowerCase();
+  const reqSizeName = (sleeve.sizeName || '').trim().toLowerCase();
+  const reqQty = sleeve.quantity || 1;
+
+  const stdCardName = getCardSleeveSizeName(reqWidth, reqHeight).toLowerCase();
+
+  for (const item of stock) {
+    const stockModel = (item.model || '').trim();
+    const stockModelLower = stockModel.toLowerCase();
+    const stockBrand = (item.brand || '').trim().toLowerCase();
+    const stockType = (item.type || '').trim().toLowerCase();
+
+    const dim = parseModelDimensions(stockModel);
+    const stockStdName = getCardSleeveSizeName(dim.width, dim.height).toLowerCase();
+
+    // Verificação de compatibilidade dimensional
+    const isDimensionMatch = 
+      (reqWidth > 0 && reqHeight > 0 && dim.width > 0 && dim.height > 0) &&
+      (Math.abs(dim.width - reqWidth) <= 1.2 && Math.abs(dim.height - reqHeight) <= 2.2);
+
+    // Verificação de compatibilidade por nome ou texto
+    const isNameMatch = 
+      (stdCardName !== 'especial' && stdCardName === stockStdName) ||
+      (reqSizeName && reqSizeName !== 'especial' && stockModelLower.includes(reqSizeName)) ||
+      (stockModelLower.includes(String(reqWidth).replace('.', ',')) && stockModelLower.includes(String(reqHeight)));
+
+    if (!isDimensionMatch && !isNameMatch) {
+      continue;
+    }
+
+    let score = 10;
+
+    // Dimensão exata ou muito próxima
+    if (isDimensionMatch && Math.abs(dim.width - reqWidth) <= 0.6 && Math.abs(dim.height - reqHeight) <= 1.0) {
+      score += 5;
+    }
+
+    // Marca correspondente
+    if (reqBrand && stockBrand) {
+      if (stockBrand === reqBrand) {
+        score += 20;
+      } else if (stockBrand.includes(reqBrand) || reqBrand.includes(stockBrand)) {
+        score += 10;
+      }
+    }
+
+    // Tipo / espessura correspondente
+    if (reqType && stockType) {
+      if (stockType === reqType) {
+        score += 10;
+      } else if (stockType.includes(reqType) || reqType.includes(stockType)) {
+        score += 5;
+      }
+    }
+
+    // Disponibilidade em estoque
+    if (item.quantity >= reqQty) {
+      score += 5;
+    } else if (item.quantity > 0) {
+      score += 2;
+    }
+
+    results.push({ item, score });
+  }
+
+  return results.sort((a, b) => b.score - a.score || b.item.quantity - a.item.quantity);
+}
+
+export interface SleeveDeductionCandidate {
+  id: string;
+  name?: string;
+  sizeName: string;
+  dimensions: string;
+  width: number;
+  height: number;
+  totalCards: number;
+  cardsToDeduct: number;
+  sleeveBrand?: string;
+  sleeveType?: string;
+  compatibleStock: { item: SleeveStockItem; score: number }[];
+  selectedStockId?: string;
+  deductQuantity: number;
+  shouldDeduct: boolean;
+}
+
+/**
+ * Calcula quais conjuntos de sleeves de um jogo foram recentemente sleevados
+ * e monta a lista de candidatos a desconto no estoque.
+ */
+export function calculateSleeveDeductionCandidates(
+  originalGame: GameData | null | undefined,
+  newSets: CardSleeveSet[],
+  stock: SleeveStockItem[]
+): SleeveDeductionCandidate[] {
+  if (!stock || stock.length === 0 || !newSets || newSets.length === 0) {
+    return [];
+  }
+
+  // Se o jogo era marcado como noCards, não havia sleeves sleevados
+  const origNoCards = Boolean(originalGame?.noCards);
+  const origIsSleeved = Boolean(originalGame?.isSleeved);
+
+  // Mapear quantidades anteriormente sleevadas por chave canônica
+  const prevSleevedMap = new Map<string, number>();
+
+  if (!origNoCards && originalGame) {
+    const prevSets: CardSleeveSet[] = (originalGame.cardSleeves?.sets && originalGame.cardSleeves.sets.length > 0)
+      ? originalGame.cardSleeves.sets
+      : (originalGame.sleevesUsed || []).map(su => ({
+          quantity: su.quantity || 0,
+          width: su.width || 0,
+          height: su.height || 0,
+          sizeName: su.sizeName,
+          isSleeved: su.isSleeved,
+          sleeveBrand: su.sleeveBrand,
+          sleeveType: su.sleeveType,
+        }));
+
+    for (const pSet of prevSets) {
+      const isSleeved = pSet.isSleeved !== undefined ? Boolean(pSet.isSleeved) : origIsSleeved;
+      if (isSleeved && pSet.quantity > 0 && pSet.width > 0 && pSet.height > 0) {
+        const key = getCanonicalDimensionKey(pSet.width, pSet.height);
+        prevSleevedMap.set(key, (prevSleevedMap.get(key) || 0) + pSet.quantity);
+      }
+    }
+  }
+
+  const candidates: SleeveDeductionCandidate[] = [];
+
+  for (let idx = 0; idx < newSets.length; idx++) {
+    const nSet = newSets[idx];
+    if (!nSet.isSleeved || nSet.quantity <= 0) continue;
+
+    const width = Number(nSet.width) || 0;
+    const height = Number(nSet.height) || 0;
+    const key = (width > 0 && height > 0) ? getCanonicalDimensionKey(width, height) : `custom-${idx}`;
+    const prevQty = prevSleevedMap.get(key) || 0;
+
+    let newlySleeved = nSet.quantity;
+    if (prevQty > 0) {
+      const amortized = Math.min(prevQty, nSet.quantity);
+      newlySleeved = nSet.quantity - amortized;
+      prevSleevedMap.set(key, prevQty - amortized);
+    }
+
+    if (newlySleeved <= 0) {
+      // Este conjunto já estava contemplado como sleevado anteriormente
+      continue;
+    }
+
+    const compatibleStock = findCompatibleStockItems(nSet, stock);
+    const bestMatch = compatibleStock.length > 0 ? compatibleStock[0].item : undefined;
+    const initialSelectedStockId = bestMatch ? bestMatch.id : undefined;
+    const initialDeductQty = bestMatch ? Math.min(newlySleeved, bestMatch.quantity) : 0;
+
+    candidates.push({
+      id: (nSet as any).id || `deduct-${idx}-${Date.now()}`,
+      name: nSet.name,
+      sizeName: nSet.sizeName || getCardSleeveSizeName(width, height),
+      dimensions: formatCardSleeveDimensions(width, height),
+      width,
+      height,
+      totalCards: nSet.quantity,
+      cardsToDeduct: newlySleeved,
+      sleeveBrand: nSet.sleeveBrand,
+      sleeveType: nSet.sleeveType,
+      compatibleStock,
+      selectedStockId: initialSelectedStockId,
+      deductQuantity: initialDeductQty,
+      shouldDeduct: initialDeductQty > 0,
+    });
+  }
+
+  return candidates;
 }

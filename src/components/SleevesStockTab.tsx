@@ -30,7 +30,10 @@ import {
   formatCardSleeveDimensions,
   parseModelDimensions,
   summarizeGameSleeves,
+  calculateSleeveDeductionCandidates,
+  type SleeveDeductionCandidate,
 } from '../utils/sleeveUtils';
+import { DeductSleevesModal } from './DeductSleevesModal';
 import '../components.css';
 
 interface ManualSleeveRow {
@@ -66,6 +69,7 @@ interface SleevesStockTabProps {
   } | null;
   onCancelFetchSleeves?: () => void;
   onUpdateGameSleeves?: (gameId: string, cardSleeves?: CardSleevesData, extraUpdates?: Partial<GameData>) => void;
+  onDeductSleeveStock?: (deductions: { stockItemId: string; quantity: number }[]) => void;
 }
 
 export function SleevesStockTab({
@@ -81,6 +85,7 @@ export function SleevesStockTab({
   fetchProgress,
   onCancelFetchSleeves,
   onUpdateGameSleeves,
+  onDeductSleeveStock,
 }: SleevesStockTabProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [brandFilter, setBrandFilter] = useState('Todas');
@@ -106,6 +111,10 @@ export function SleevesStockTab({
 
   // Expandir jogos de uma demanda
   const [expandedDemandKeys, setExpandedDemandKeys] = useState<Set<string>>(new Set());
+
+  // Estados de confirmação para dedução de estoque ao salvar sleeves
+  const [pendingManualSleevesSave, setPendingManualSleevesSave] = useState<{ newCardSleeves: CardSleevesData; extraUpdates: Partial<GameData> } | null>(null);
+  const [deductionCandidates, setDeductionCandidates] = useState<SleeveDeductionCandidate[]>([]);
 
   const toggleDemandExpand = (key: string) => {
     setExpandedDemandKeys(prev => {
@@ -198,6 +207,8 @@ export function SleevesStockTab({
     setEditingSleevesGame(null);
     setEditGameNoCards(false);
     setManualRows([]);
+    setPendingManualSleevesSave(null);
+    setDeductionCandidates([]);
   };
 
   const handleAddManualRow = () => {
@@ -352,13 +363,27 @@ export function SleevesStockTab({
       noCards: false,
     };
 
+    const extraUpdates: Partial<GameData> = {
+      noCards: false,
+      isSleeved: summary.isSleeved,
+      sleeveBrand: summary.sleeveBrand,
+      sleeveType: summary.sleeveType,
+    };
+
+    if (stock && stock.length > 0 && sets.length > 0) {
+      const candidates = calculateSleeveDeductionCandidates(editingSleevesGame, sets, stock);
+      if (candidates.length > 0) {
+        setPendingManualSleevesSave({
+          newCardSleeves,
+          extraUpdates,
+        });
+        setDeductionCandidates(candidates);
+        return;
+      }
+    }
+
     if (onUpdateGameSleeves) {
-      onUpdateGameSleeves(editingSleevesGame.id, newCardSleeves, {
-        noCards: false,
-        isSleeved: summary.isSleeved,
-        sleeveBrand: summary.sleeveBrand,
-        sleeveType: summary.sleeveType,
-      });
+      onUpdateGameSleeves(editingSleevesGame.id, newCardSleeves, extraUpdates);
     }
 
     handleCloseEditSleeves();
@@ -2320,6 +2345,47 @@ export function SleevesStockTab({
           </div>
         </div>,
         document.body
+      )}
+
+      {/* Modal de confirmação para deduzir sleeves do estoque */}
+      {pendingManualSleevesSave && editingSleevesGame && deductionCandidates.length > 0 && (
+        <DeductSleevesModal
+          isOpen={true}
+          gameName={editingSleevesGame.name}
+          candidates={deductionCandidates}
+          stock={stock}
+          onConfirm={(deductions) => {
+            if (onDeductSleeveStock) {
+              onDeductSleeveStock(deductions);
+            } else {
+              for (const d of deductions) {
+                onAdjustQuantity(d.stockItemId, -d.quantity);
+              }
+            }
+            if (onUpdateGameSleeves && editingSleevesGame && pendingManualSleevesSave) {
+              onUpdateGameSleeves(
+                editingSleevesGame.id, 
+                pendingManualSleevesSave.newCardSleeves, 
+                pendingManualSleevesSave.extraUpdates
+              );
+            }
+            handleCloseEditSleeves();
+          }}
+          onSkip={() => {
+            if (onUpdateGameSleeves && editingSleevesGame && pendingManualSleevesSave) {
+              onUpdateGameSleeves(
+                editingSleevesGame.id, 
+                pendingManualSleevesSave.newCardSleeves, 
+                pendingManualSleevesSave.extraUpdates
+              );
+            }
+            handleCloseEditSleeves();
+          }}
+          onCancel={() => {
+            setPendingManualSleevesSave(null);
+            setDeductionCandidates([]);
+          }}
+        />
       )}
     </div>
   );

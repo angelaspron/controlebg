@@ -61,6 +61,7 @@ function App() {
     updateStockItem,
     deleteStockItem,
     adjustQuantity,
+    deductStockBatch,
     setStock: setSleeveStock,
   } = useSleeveStock(user);
 
@@ -480,6 +481,7 @@ function App() {
             isFetchingSleeves={isBatchUpdating}
             fetchProgress={batchProgress}
             onCancelFetchSleeves={cancelBatchUpdate}
+            onDeductSleeveStock={deductStockBatch}
             onUpdateGameSleeves={(gameId, cardSleeves, extraUpdates) => {
               const updates: Partial<GameData> = { ...extraUpdates };
               if (cardSleeves !== undefined) {
@@ -693,6 +695,8 @@ function App() {
       onRefresh={(game) => updateGamesParallel([game])}
       onSaveSleeveInfo={(id, info) => editGame(id, info)}
       isUpdating={activeViewingGame ? updatingGameIds.has(activeViewingGame.id) : false}
+      sleeveStock={sleeveStock}
+      onDeductSleeveStock={deductStockBatch}
     />
 
     <AddGameModal
@@ -713,6 +717,8 @@ function App() {
       onRefreshLudo={(game) => fetchLudoDataForGames([game])}
       bggToken={bggToken}
       ludoToken={ludoToken}
+      sleeveStock={sleeveStock}
+      onDeductSleeveStock={deductStockBatch}
     />
 
     <SettingsModal

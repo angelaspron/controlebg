@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Search, Loader2, CheckCircle2, RefreshCw, Dices, ShieldCheck, Plus, Trash2, Layers } from 'lucide-react';
-import type { GameData, CardSleeveSet, GameSleeveUsage } from '../types';
+import type { GameData, CardSleeveSet, GameSleeveUsage, SleeveStockItem } from '../types';
 import '../components.css';
 import { updateSingleGameParallel } from '../services/batchProcessor';
 import { 
@@ -9,8 +9,11 @@ import {
   SLEEVE_SUBTYPES,
   parseModelDimensions, 
   formatCardSleeveDimensions, 
-  summarizeGameSleeves 
+  summarizeGameSleeves,
+  calculateSleeveDeductionCandidates,
+  type SleeveDeductionCandidate
 } from '../utils/sleeveUtils';
+import { DeductSleevesModal } from './DeductSleevesModal';
 
 interface EditSleeveItem {
   id: string;
@@ -39,9 +42,23 @@ interface EditGameModalProps {
   onRefreshLudo?: (game: GameData) => void;
   bggToken?: string;
   ludoToken?: string;
+  sleeveStock?: SleeveStockItem[];
+  onDeductSleeveStock?: (deductions: { stockItemId: string; quantity: number }[]) => void;
 }
 
-export function EditGameModal({ game, isOpen, onClose, onSave, onDelete, onRefreshBGG, onRefreshLudo, bggToken, ludoToken }: EditGameModalProps) {
+export function EditGameModal({ 
+  game, 
+  isOpen, 
+  onClose, 
+  onSave, 
+  onDelete, 
+  onRefreshBGG, 
+  onRefreshLudo, 
+  bggToken, 
+  ludoToken,
+  sleeveStock,
+  onDeductSleeveStock
+}: EditGameModalProps) {
   const [name, setName] = useState('');
   const [bggIdInput, setBggIdInput] = useState('');
   const [status, setStatus] = useState('Na Coleção');
@@ -64,8 +81,12 @@ export function EditGameModal({ game, isOpen, onClose, onSave, onDelete, onRefre
   const [currentThumbnail, setCurrentThumbnail] = useState<string | undefined>(undefined);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [statusMsg, setStatusMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  const [pendingSaveUpdates, setPendingSaveUpdates] = useState<Partial<Omit<GameData, 'id'>> | null>(null);
+  const [deductionCandidates, setDeductionCandidates] = useState<SleeveDeductionCandidate[]>([]);
 
   useEffect(() => {
+    setPendingSaveUpdates(null);
+    setDeductionCandidates([]);
     if (game) {
       setName(game.name || '');
       setBggIdInput(game.bggId || '');
@@ -464,7 +485,7 @@ export function EditGameModal({ game, isOpen, onClose, onSave, onDelete, onRefre
       updatedSleevesUsed = customSleeves;
     }
 
-    onSave(game.id, {
+    const updatesToSave: Partial<Omit<GameData, 'id'>> = {
       name: name.trim(),
       bggId: bggIdInput.trim() || undefined,
       status: status.trim(),
@@ -486,7 +507,18 @@ export function EditGameModal({ game, isOpen, onClose, onSave, onDelete, onRefre
       cardSleeves: updatedCardSleeves,
       sleevesUsed: updatedSleevesUsed,
       thumbnail: currentThumbnail || game.thumbnail,
-    });
+    };
+
+    if (sleeveStock && sleeveStock.length > 0 && updatedCardSleeves?.sets && updatedCardSleeves.sets.length > 0) {
+      const candidates = calculateSleeveDeductionCandidates(game, updatedCardSleeves.sets, sleeveStock);
+      if (candidates.length > 0) {
+        setPendingSaveUpdates(updatesToSave);
+        setDeductionCandidates(candidates);
+        return;
+      }
+    }
+
+    onSave(game.id, updatesToSave);
     onClose();
   };
 
@@ -1165,6 +1197,34 @@ export function EditGameModal({ game, isOpen, onClose, onSave, onDelete, onRefre
           </div>
         </form>
       </div>
+
+      {pendingSaveUpdates && deductionCandidates.length > 0 && (
+        <DeductSleevesModal
+          isOpen={true}
+          gameName={name.trim() || game.name}
+          candidates={deductionCandidates}
+          stock={sleeveStock || []}
+          onConfirm={(deductions) => {
+            if (onDeductSleeveStock) {
+              onDeductSleeveStock(deductions);
+            }
+            onSave(game.id, pendingSaveUpdates);
+            setPendingSaveUpdates(null);
+            setDeductionCandidates([]);
+            onClose();
+          }}
+          onSkip={() => {
+            onSave(game.id, pendingSaveUpdates);
+            setPendingSaveUpdates(null);
+            setDeductionCandidates([]);
+            onClose();
+          }}
+          onCancel={() => {
+            setPendingSaveUpdates(null);
+            setDeductionCandidates([]);
+          }}
+        />
+      )}
     </div>
   );
 }

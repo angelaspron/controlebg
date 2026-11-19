@@ -13,6 +13,8 @@ import {
   POPULAR_SLEEVE_MODELS,
   KNOWN_SLEEVE_BRANDS,
   SLEEVE_SUBTYPES,
+  findCompatibleStockItems,
+  calculateSleeveDeductionCandidates,
 } from '../src/utils/sleeveUtils.ts';
 import type { GameData, SleeveStockItem } from '../src/types/index.ts';
 
@@ -985,6 +987,103 @@ export async function runSleevesTests(logger: (msg: string) => void): Promise<{ 
     assert.equal(summary.isSleeved, true);
     assert.equal(summary.sleeveBrand, 'Bucaneiros, Dragon Shield');
     assert.equal(summary.sleeveType, 'Normal, Premium');
+  });
+
+  // Teste 22: Correspondência de Estoque (findCompatibleStockItems)
+  test('Estoque: findCompatibleStockItems identifica tamanhos equivalentes e pontua marca/tipo', () => {
+    const stock: SleeveStockItem[] = [
+      { id: 's1', brand: 'Bucaneiros', model: 'Padrão / Standard (63,5 x 88 mm)', quantity: 200, type: 'Normal' },
+      { id: 's2', brand: 'Gamegenic', model: 'Padrão (64 x 89 mm)', quantity: 100, type: 'Premium' },
+      { id: 's3', brand: 'Mayday', model: 'Mini Euro (45 x 68 mm)', quantity: 50, type: 'Normal' },
+    ];
+
+    // Busca por manga Padrão com marca Bucaneiros
+    const matchesBuc = findCompatibleStockItems(
+      { width: 63.5, height: 88, sizeName: 'Padrão', sleeveBrand: 'Bucaneiros', sleeveType: 'Normal', quantity: 100 },
+      stock
+    );
+
+    assert.equal(matchesBuc.length, 2, 'Deve encontrar 2 itens compatíveis com Padrão');
+    assert.equal(matchesBuc[0].item.id, 's1', 'Bucaneiros deve ser o primeiro por bater marca e tipo');
+    assert.equal(matchesBuc[1].item.id, 's2', 'Gamegenic Padrão 64x89mm deve ser aceito como compatível');
+
+    // Busca por manga Mini Euro
+    const matchesEuro = findCompatibleStockItems(
+      { width: 45, height: 68, sizeName: 'Mini Euro', quantity: 30 },
+      stock
+    );
+    assert.equal(matchesEuro.length, 1);
+    assert.equal(matchesEuro[0].item.id, 's3');
+  });
+
+  // Teste 23: Cálculo de Candidatos a Desconto (calculateSleeveDeductionCandidates)
+  test('Estoque: calculateSleeveDeductionCandidates detecta novas cartas sleevadas e sugere quantidade correta', () => {
+    const stock: SleeveStockItem[] = [
+      { id: 's1', brand: 'Bucaneiros', model: 'Padrão (63,5 x 88 mm)', quantity: 150 },
+      { id: 's2', brand: 'Meeple Virus', model: 'Mini Euro (45 x 68 mm)', quantity: 25 },
+    ];
+
+    // Cenário 1: Jogo novo sem sleeves salvos -> usuário sleeva 100 cartas Padrão
+    const gameNovo: GameData = {
+      id: 'g1',
+      name: 'Wingspan',
+      status: 'Na Coleção',
+      spend: 300,
+      type: 'Base',
+      value: 350,
+      isSleeved: false,
+    };
+
+    const newSets1 = [
+      { width: 63.5, height: 88, sizeName: 'Padrão', quantity: 100, isSleeved: true, sleeveBrand: 'Bucaneiros' }
+    ];
+
+    const candidates1 = calculateSleeveDeductionCandidates(gameNovo, newSets1, stock);
+    assert.equal(candidates1.length, 1, 'Deve gerar 1 candidato para Wingspan');
+    assert.equal(candidates1[0].cardsToDeduct, 100, 'Deve sugerir descontar 100 cartas');
+    assert.equal(candidates1[0].selectedStockId, 's1');
+    assert.equal(candidates1[0].deductQuantity, 100, 'Deve pré-preencher com 100 pois estoque possui 150');
+    assert.equal(candidates1[0].shouldDeduct, true);
+
+    // Cenário 2: Jogo já estava sleevado com 100 cartas -> usuário salva sem alterar quantidades de sleeves
+    const gameJaSleevado: GameData = {
+      ...gameNovo,
+      isSleeved: true,
+      cardSleeves: {
+        source: 'Manual',
+        sets: [{ width: 63.5, height: 88, sizeName: 'Padrão', quantity: 100, isSleeved: true }]
+      }
+    };
+
+    const candidates2 = calculateSleeveDeductionCandidates(gameJaSleevado, newSets1, stock);
+    assert.equal(candidates2.length, 0, 'Não deve gerar candidatos se o jogo já estava sleevado com as mesmas cartas');
+
+    // Cenário 3: Jogo tinha 100 cartas sleevadas e agora o usuário adicionou mais 50 cartas sleevadas (total 150)
+    const newSets3 = [
+      { width: 63.5, height: 88, sizeName: 'Padrão', quantity: 150, isSleeved: true, sleeveBrand: 'Bucaneiros' }
+    ];
+    const candidates3 = calculateSleeveDeductionCandidates(gameJaSleevado, newSets3, stock);
+    assert.equal(candidates3.length, 1, 'Deve gerar candidato para as cartas excedentes');
+    assert.equal(candidates3[0].cardsToDeduct, 50, 'Deve deduzir apenas as 50 novas cartas sleevadas');
+
+    // Cenário 4: Estoque insuficiente (precisa de 40 cartas Mini Euro mas só tem 25 em estoque)
+    const newSets4 = [
+      { width: 45, height: 68, sizeName: 'Mini Euro', quantity: 40, isSleeved: true }
+    ];
+    const candidates4 = calculateSleeveDeductionCandidates(gameNovo, newSets4, stock);
+    assert.equal(candidates4.length, 1);
+    assert.equal(candidates4[0].cardsToDeduct, 40);
+    assert.equal(candidates4[0].selectedStockId, 's2');
+    assert.equal(candidates4[0].deductQuantity, 25, 'Deve limitar a quantidade inicial a descontar para 25 (saldo do estoque)');
+
+    // Cenário 5: Jogo marcado como noCards
+    const gameNoCards: GameData = { ...gameNovo, noCards: true };
+    const candidates5 = calculateSleeveDeductionCandidates(gameNoCards, [{ width: 63.5, height: 88, quantity: 50, isSleeved: false }], stock);
+    assert.equal(candidates5.length, 0);
+
+    // Cenário 6: Estoque vazio
+    const candidates6 = calculateSleeveDeductionCandidates(gameNovo, newSets1, []);
+    assert.equal(candidates6.length, 0);
   });
 
   return { passed, failed };
