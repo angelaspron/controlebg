@@ -735,16 +735,36 @@ select option {
   border: 1px solid rgba(203, 213, 225, 0.85);
 }
 
-[data-theme="light"] .main-tab-btn {
+[data-theme="light"] .main-tab-btn:not(.active) {
   color: #64748b;
 }
 
-[data-theme="light"] .main-tab-btn:hover {
+[data-theme="light"] .main-tab-btn:not(.active):hover {
   color: #0f172a;
   background: rgba(255, 255, 255, 0.8);
 }
 
-[data-theme="light"] .tab-badge {
+[data-theme="light"] .main-tab-btn.active {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6) !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.35);
+}
+
+[data-theme="light"] .main-tab-btn.active span {
+  color: #ffffff !important;
+}
+
+[data-theme="light"] .main-tab-btn.active svg {
+  color: #ffffff !important;
+  stroke: #ffffff !important;
+}
+
+[data-theme="light"] .main-tab-btn.active .tab-badge {
+  background: rgba(255, 255, 255, 0.25) !important;
+  color: #ffffff !important;
+}
+
+[data-theme="light"] .main-tab-btn:not(.active) .tab-badge {
   background: rgba(0, 0, 0, 0.07);
   color: #334155;
 }
