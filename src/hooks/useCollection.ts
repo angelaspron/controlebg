@@ -1208,6 +1208,8 @@ export function useCollection(user?: User | null) {
     const ws = XLSX.utils.json_to_sheet(games.map(g => ({
       'Nome do Jogo': g.name,
       'Status': g.status,
+      'Jogado': g.isPlayed ? 'Sim' : 'Não',
+      'Lacrado': g.isSealed ? 'Sim' : 'Não',
       'Valor Pago': g.spend,
       'Valor Vendido': g.soldValue || '',
       'Tipo': g.type,

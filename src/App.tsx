@@ -70,6 +70,7 @@ function App() {
   const [statusFilter, setStatusFilter] = useState('Todos');
   const [typeFilter, setTypeFilter] = useState('Todos');
   const [playedFilter, setPlayedFilter] = useState<'Todos' | 'Jogados' | 'Não Jogados'>('Todos');
+  const [sealedFilter, setSealedFilter] = useState<'Todos' | 'Lacrados' | 'Abertos'>('Todos');
   const [rankFilter, setRankFilter] = useState('Todos');
   const [sortBy, setSortBy] = useState('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
@@ -216,7 +217,12 @@ function App() {
         (playedFilter === 'Jogados' && Boolean(game.isPlayed)) ||
         (playedFilter === 'Não Jogados' && !game.isPlayed);
 
-      return matchesSearch && matchesStatus && matchesType && matchesRank && matchesPlayed;
+      const matchesSealed =
+        sealedFilter === 'Todos' ||
+        (sealedFilter === 'Lacrados' && Boolean(game.isSealed)) ||
+        (sealedFilter === 'Abertos' && !game.isSealed);
+
+      return matchesSearch && matchesStatus && matchesType && matchesRank && matchesPlayed && matchesSealed;
     });
 
     return filtered.sort((a, b) => {
@@ -253,7 +259,7 @@ function App() {
       }
       return sortOrder === 'asc' ? comparison : -comparison;
     });
-  }, [games, searchTerm, statusFilter, typeFilter, rankFilter, playedFilter, sortBy, sortOrder]);
+  }, [games, searchTerm, statusFilter, typeFilter, rankFilter, playedFilter, sealedFilter, sortBy, sortOrder]);
 
   useEffect(() => {
     // Limpar seleção quando a lista muda
@@ -627,6 +633,16 @@ function App() {
                   <option value="Todos">Partidas: Todos</option>
                   <option value="Jogados">Jogados</option>
                   <option value="Não Jogados">Não Jogados</option>
+                </select>
+                <select
+                  className="search-input"
+                  style={{minWidth: '140px'}}
+                  value={sealedFilter}
+                  onChange={e => setSealedFilter(e.target.value as 'Todos' | 'Lacrados' | 'Abertos')}
+                >
+                  <option value="Todos">Lacre: Todos</option>
+                  <option value="Lacrados">📦 Lacrados</option>
+                  <option value="Abertos">Abertos</option>
                 </select>
                 <select
                   className="search-input"

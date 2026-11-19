@@ -232,6 +232,25 @@ export const GameCard = memo(function GameCard({
               {game.isPlayed ? '✔ Jogado' : 'Não Jogado'}
             </span>
           )}
+          {game.isSealed && (
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '3px',
+                padding: '1px 6px',
+                borderRadius: '6px',
+                fontSize: '0.72rem',
+                fontWeight: 600,
+                background: 'rgba(168, 85, 247, 0.18)',
+                color: '#c084fc',
+                border: '1px solid rgba(168, 85, 247, 0.35)'
+              }}
+              title="Jogo novo lacrado (ainda não foi aberto)"
+            >
+              📦 Lacrado
+            </span>
+          )}
           {game.noCards ? (
             <span
               style={{

@@ -548,6 +548,25 @@ export function GameDetailsModal({
                     {game.isPlayed ? '✔ Jogado' : 'Não Jogado'}
                   </span>
                 )}
+                {game.isSealed && (
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      padding: '2px 8px',
+                      borderRadius: '8px',
+                      fontSize: '0.78rem',
+                      fontWeight: 600,
+                      background: 'rgba(168, 85, 247, 0.2)',
+                      color: '#c084fc',
+                      border: '1px solid rgba(168, 85, 247, 0.4)'
+                    }}
+                    title="Jogo novo lacrado (ainda não foi aberto)"
+                  >
+                    📦 Lacrado
+                  </span>
+                )}
               </div>
             </div>
 

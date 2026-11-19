@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Search, Loader2, CheckCircle2, RefreshCw, Dices, ShieldCheck, ShieldAlert, Plus, Trash2, Layers } from 'lucide-react';
+import { X, Search, Loader2, CheckCircle2, RefreshCw, Dices, ShieldCheck, ShieldAlert, Plus, Trash2, Layers, Package } from 'lucide-react';
 import type { GameData, CardSleeveSet, GameSleeveUsage, SleeveStockItem, GameSleeveStatus } from '../types';
 import '../components.css';
 import { updateSingleGameParallel } from '../services/batchProcessor';
@@ -63,6 +63,7 @@ export function EditGameModal({
   const [bggIdInput, setBggIdInput] = useState('');
   const [status, setStatus] = useState('Na Coleção');
   const [isPlayed, setIsPlayed] = useState(false);
+  const [isSealed, setIsSealed] = useState(false);
   const [spend, setSpend] = useState('');
   const [type, setType] = useState('Base');
   const [value, setValue] = useState('');
@@ -92,6 +93,7 @@ export function EditGameModal({
       setBggIdInput(game.bggId || '');
       setStatus(game.status || 'Na Coleção');
       setIsPlayed(Boolean(game.isPlayed));
+      setIsSealed(Boolean(game.isSealed));
       setSpend(game.spend !== undefined && game.spend !== 0 ? String(game.spend) : '');
       setType(game.type || 'Base');
       setValue(game.value !== undefined && game.value !== 0 ? String(game.value) : '');
@@ -410,6 +412,7 @@ export function EditGameModal({
         bggId: bggIdInput.trim() || undefined,
         status: status.trim(),
         isPlayed: Boolean(isPlayed),
+        isSealed: Boolean(isSealed),
         spend: spend ? parseFloat(spend.replace(',', '.')) : 0,
         type: type.trim(),
         value: value ? parseFloat(value.replace(',', '.')) : 0,
@@ -506,6 +509,7 @@ export function EditGameModal({
       bggId: bggIdInput.trim() || undefined,
       status: status.trim(),
       isPlayed: Boolean(isPlayed),
+      isSealed: Boolean(isSealed),
       spend: spend ? parseFloat(spend.replace(',', '.')) : 0,
       type: type.trim(),
       value: value ? parseFloat(value.replace(',', '.')) : 0,
@@ -734,6 +738,63 @@ export function EditGameModal({
                   height: '20px',
                   width: '20px',
                   left: isPlayed ? '24px' : '3px',
+                  bottom: '3px',
+                  backgroundColor: 'white',
+                  transition: '0.3s',
+                  borderRadius: '50%'
+                }} />
+              </span>
+            </label>
+          </div>
+
+          {/* Campo de Status: Lacrado */}
+          <div 
+            style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'space-between',
+              padding: '0.85rem 1.1rem',
+              background: isSealed ? 'rgba(168, 85, 247, 0.12)' : 'rgba(255, 255, 255, 0.04)',
+              border: `1px solid ${isSealed ? 'rgba(168, 85, 247, 0.4)' : 'rgba(255, 255, 255, 0.1)'}`,
+              borderRadius: '10px',
+              transition: 'all 0.2s ease',
+              cursor: 'pointer'
+            }}
+            onClick={() => setIsSealed(!isSealed)}
+          >
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+              <span style={{ fontWeight: 600, fontSize: '0.95rem', color: isSealed ? '#c084fc' : '#f8fafc', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Package size={18} color={isSealed ? '#a855f7' : 'var(--text-muted)'} />
+                Status: {isSealed ? 'Jogo Lacrado' : 'Aberto'}
+              </span>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                {isSealed ? 'Jogo lacrado de fábrica (ainda não foi aberto).' : 'Jogo aberto / sem lacre de fábrica.'}
+              </span>
+            </div>
+
+            <label 
+              style={{ position: 'relative', display: 'inline-block', width: '48px', height: '26px', cursor: 'pointer', margin: 0 }}
+              onClick={e => e.stopPropagation()}
+            >
+              <input
+                type="checkbox"
+                checked={isSealed}
+                onChange={e => setIsSealed(e.target.checked)}
+                style={{ opacity: 0, width: 0, height: 0 }}
+              />
+              <span style={{
+                position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                backgroundColor: isSealed ? '#a855f7' : 'rgba(255,255,255,0.2)',
+                transition: '0.3s',
+                borderRadius: '34px',
+                boxShadow: isSealed ? '0 0 10px rgba(168, 85, 247, 0.4)' : 'none'
+              }}>
+                <span style={{
+                  position: 'absolute',
+                  content: '""',
+                  height: '20px',
+                  width: '20px',
+                  left: isSealed ? '24px' : '3px',
                   bottom: '3px',
                   backgroundColor: 'white',
                   transition: '0.3s',

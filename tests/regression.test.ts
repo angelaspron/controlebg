@@ -261,6 +261,35 @@ export async function runRegressionTests(logger: (msg: string) => void): Promise
     assert.deepEqual(naoJogados.map(g => g.name), ['Brass Birmingham', 'Vênus Próxima (Expansão)']);
   });
 
+  // Regressão 8.1: Sistema de Filtro de Lacrados (Todos / Lacrados / Abertos)
+  await test('Filtros de Lacrado: Isolamento estrito entre Todos, Lacrados e Abertos', () => {
+    const games: GameData[] = [
+      { id: '1', name: 'Terraforming Mars', type: 'Base', status: 'Na Coleção', spend: 300, value: 350, isSealed: true },
+      { id: '2', name: 'Brass Birmingham', type: 'Base', status: 'Na Coleção', spend: 400, value: 450, isSealed: false },
+      { id: '3', name: 'Prelúdio (Expansão)', type: 'Expansão', status: 'Na Coleção', spend: 120, value: 150, isSealed: true },
+      { id: '4', name: 'Vênus Próxima (Expansão)', type: 'Expansão', status: 'Na Coleção', spend: 150, value: 180 },
+    ];
+
+    const filterGames = (list: GameData[], filter: 'Todos' | 'Lacrados' | 'Abertos') => {
+      return list.filter(g => {
+        if (filter === 'Todos') return true;
+        if (filter === 'Lacrados') return Boolean(g.isSealed);
+        if (filter === 'Abertos') return !g.isSealed;
+        return true;
+      });
+    };
+
+    const todos = filterGames(games, 'Todos');
+    const lacrados = filterGames(games, 'Lacrados');
+    const abertos = filterGames(games, 'Abertos');
+
+    assert.equal(todos.length, 4, 'Filtro Todos deve retornar todos os 4 jogos');
+    assert.equal(lacrados.length, 2, 'Filtro Lacrados deve retornar 2 jogos');
+    assert.deepEqual(lacrados.map(g => g.name), ['Terraforming Mars', 'Prelúdio (Expansão)']);
+    assert.equal(abertos.length, 2, 'Filtro Abertos deve retornar 2 jogos');
+    assert.deepEqual(abertos.map(g => g.name), ['Brass Birmingham', 'Vênus Próxima (Expansão)']);
+  });
+
   // Regressão 9: Dashboard Analítico & Cruzamento Tipo x Partidas com Reatividade
   await test('Dashboard Analítico: Cruzamento Tipo x Status e Reatividade após Edição Manual', () => {
     let mockCollection: GameData[] = [

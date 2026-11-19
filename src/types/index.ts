@@ -8,6 +8,7 @@ export interface GameData {
   value: number | string; // 'valor mercado' - valor atual de mercado
   soldValue?: number | string; // valor de venda
   isPlayed?: boolean; // Rastreamento de partidas (Status: Jogado / Não Jogado)
+  isSealed?: boolean; // Rastreamento de conservação (Status: Lacrado / Aberto)
   
   // Dados extras do BGG & Ludopedia & Compara Jogos
   thumbnail?: string;
