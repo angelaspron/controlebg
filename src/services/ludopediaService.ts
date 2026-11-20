@@ -20,6 +20,7 @@ export interface LudopediaParsedData {
   isPlayed?: boolean;
   isOwned?: boolean;
   cardSleeves?: CardSleevesData; // Quantidade e tipos de sleeves extraídos da Ludopedia (fallback secundário)
+  spend?: number; // Valor pago pelo usuário (vl_custo)
 }
 
 /**
@@ -446,6 +447,15 @@ export function parseLudopediaDetail(data: any, shallowData: any = {}): Ludopedi
   const rankRaw = data.rank_jogo || shallowData.rank_jogo || data.posicao_rank || shallowData.posicao_rank || data.rank || shallowData.rank;
   const rank = rankRaw ? parseInt(rankRaw, 10) : undefined;
 
+  const rawCusto = data.vl_custo ?? shallowData.vl_custo;
+  let spend: number | undefined;
+  if (rawCusto !== undefined && rawCusto !== null && rawCusto !== '') {
+    const num = typeof rawCusto === 'number' ? rawCusto : parseFloat(String(rawCusto).replace(',', '.'));
+    if (!isNaN(num)) {
+      spend = num;
+    }
+  }
+
   const isOwned = isOwnedInLudopedia(data, shallowData);
   const rawIsPlayed = parseIsPlayedFromLudo(data, shallowData);
 
@@ -467,6 +477,7 @@ export function parseLudopediaDetail(data: any, shallowData: any = {}): Ludopedi
     isOwned,
     isPlayed: isOwned ? rawIsPlayed : false,
     cardSleeves: parseLudopediaSleeves(data, shallowData),
+    spend,
   };
 }
 
@@ -485,7 +496,7 @@ export async function fetchLudopediaData(
     while (attempt < maxRetries) {
       try {
         const res = await fetch(url, {
-          headers: { Authorization: `Bearer ${token}` }
+          headers: { Authorization: `Bearer ${resolvedToken}` }
         });
 
         if (res.status === 429) {

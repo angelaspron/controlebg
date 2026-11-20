@@ -99,7 +99,7 @@ export function simulateLudoCollectionImport(
       ludoId: String(item.id_jogo),
       name: item.nm_jogo || 'Jogo Desconhecido',
       status: mappedStatus,
-      spend: item.vl_custo ? parseFloat(item.vl_custo) : 0,
+      spend: (item.vl_custo !== undefined && item.vl_custo !== null && item.vl_custo !== '') ? (typeof item.vl_custo === 'number' ? item.vl_custo : parseFloat(String(item.vl_custo).replace(',', '.'))) : 0,
       type: item.tp_jogo === 'e' ? 'Expansão' : 'Base',
       value: 0,
       isPlayed: isPlayedInLudo,
@@ -125,10 +125,15 @@ export function simulateLudoCollectionImport(
     if (existingIdx !== -1) {
       const prevG = mergedShelf[existingIdx];
       const isExpTarget = prevG.type === 'Expansão' || incoming.type === 'Expansão';
+      const prevSpendNum = typeof prevG.spend === 'string' ? parseFloat(String(prevG.spend).replace(',', '.')) : Number(prevG.spend);
+      const incomingSpendNum = typeof incoming.spend === 'string' ? parseFloat(String(incoming.spend).replace(',', '.')) : Number(incoming.spend);
+      const mergedSpend = (incomingSpendNum > 0) ? incomingSpendNum : (isNaN(prevSpendNum) || prevSpendNum <= 0 ? (incomingSpendNum || 0) : prevG.spend);
+
       mergedShelf[existingIdx] = {
         ...prevG,
         ludoId: prevG.ludoId || incoming.ludoId,
         status: prevG.status === 'Desconhecido' ? incoming.status : prevG.status,
+        spend: mergedSpend,
         isPlayed: isExpTarget ? incoming.isPlayed : Boolean(prevG.isPlayed || incoming.isPlayed),
       };
     } else {
@@ -363,6 +368,35 @@ export async function runStrictLudopediaTests(log: (msg: string) => void = conso
     const resultPlayed = simulateLudoCollectionImport([], [expansionPlayed], []);
     assert.equal(resultPlayed.length, 1);
     assert.equal(resultPlayed[0].isPlayed, true, 'Expansão com fl_jogou: 1 na API deve vir como JOGADO');
+  });
+
+  // Cenário 16: Extração e Sincronização do Valor Pago (vl_custo)
+  testCase('16. Sincronização do Valor Pago: Puxar e atualizar spend a partir do vl_custo da Ludopedia', () => {
+    // 1. Jogo novo importado com vl_custo numérico (ex: Enseada dos Mercadores = 347)
+    const enseadaItem = {
+      id_jogo: 22998,
+      nm_jogo: 'Enseada dos Mercadores',
+      fl_tem: 1,
+      vl_custo: 347,
+      _source_lista: 'colecao'
+    };
+    const importResult = simulateLudoCollectionImport([], [[enseadaItem]], []);
+    assert.equal(importResult.length, 1);
+    assert.equal(importResult[0].spend, 347, 'Deve mapear vl_custo=347 para spend=347');
+
+    // 2. Jogo já existente na estante com spend = 0 ou "0" sendo sincronizado com a Ludopedia
+    const existingShelf: GameData[] = [{
+      id: 'ludo-22998',
+      ludoId: '22998',
+      name: 'Enseada dos Mercadores',
+      status: 'Na Coleção',
+      spend: '0',
+      type: 'Base',
+      value: 501.46
+    }];
+    const syncResult = simulateLudoCollectionImport(existingShelf, [[enseadaItem]], []);
+    assert.equal(syncResult.length, 1);
+    assert.equal(syncResult[0].spend, 347, 'Sincronização deve atualizar spend de "0" para 347 quando vl_custo está preenchido na Ludopedia');
   });
 
   return { passed, failed };

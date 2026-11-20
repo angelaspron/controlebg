@@ -509,8 +509,15 @@ export function useCollection(user?: User | null) {
           if (ludoData) {
             setGames(prev => prev.map(g => {
               if (g.id !== game.id) return g;
+              const gSpendNum = typeof g.spend === 'string' ? parseFloat(String(g.spend).replace(',', '.')) : Number(g.spend);
+              const updatedSpend = (ludoData.spend !== undefined && ludoData.spend > 0)
+                ? ludoData.spend
+                : ((isNaN(gSpendNum) || gSpendNum <= 0) && ludoData.spend !== undefined
+                    ? ludoData.spend
+                    : g.spend);
               return {
                 ...g,
+                spend: updatedSpend,
                 ludoId: ludoData.ludoId || g.ludoId,
                 bggId: ludoData.bggId || g.bggId,
                 type: ludoData.type !== 'Base' ? ludoData.type : g.type,
@@ -924,7 +931,7 @@ export function useCollection(user?: User | null) {
             ludoId: String(item.id_jogo),
             name: item.nm_jogo || 'Jogo Desconhecido',
             status: mappedStatus,
-            spend: item.vl_custo ? parseFloat(item.vl_custo) : 0,
+            spend: (item.vl_custo !== undefined && item.vl_custo !== null && item.vl_custo !== '') ? (typeof item.vl_custo === 'number' ? item.vl_custo : parseFloat(String(item.vl_custo).replace(',', '.'))) : 0,
             type: inferredType,
             value: 0,
             yearPublished: item.ano_publicacao ? parseInt(item.ano_publicacao, 10) : undefined,
@@ -954,13 +961,17 @@ export function useCollection(user?: User | null) {
             if (existingIndex !== -1) {
               const prevG = newPrev[existingIndex];
               const isExpTarget = prevG.type === 'Expansão' || ng.type === 'Expansão';
+              const prevSpendNum = typeof prevG.spend === 'string' ? parseFloat(String(prevG.spend).replace(',', '.')) : Number(prevG.spend);
+              const ngSpendNum = typeof ng.spend === 'string' ? parseFloat(String(ng.spend).replace(',', '.')) : Number(ng.spend);
+              const resolvedSpend = (ngSpendNum > 0) ? ngSpendNum : (isNaN(prevSpendNum) || prevSpendNum <= 0 ? (ngSpendNum || 0) : prevG.spend);
+
               newPrev[existingIndex] = {
                 ...prevG,
                 ludoId: prevG.ludoId || ng.ludoId,
                 thumbnail: prevG.thumbnail || ng.thumbnail,
                 ludoRating: prevG.ludoRating || ng.ludoRating,
                 status: prevG.status === 'Desconhecido' ? ng.status : prevG.status,
-                spend: prevG.spend === 0 ? ng.spend : prevG.spend,
+                spend: resolvedSpend,
                 yearPublished: prevG.yearPublished || ng.yearPublished,
                 type: ng.type || prevG.type,
                 // Para expansão: o status isPlayed deve refletir diretamente a API da Ludopedia.

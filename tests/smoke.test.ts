@@ -93,6 +93,7 @@ export async function runSmokeTests(logger: (msg: string) => void): Promise<{ pa
       qt_jogadores_max: 5,
       vl_nota: 8.8,
       rank_jogo: 12,
+      vl_custo: 347,
       link_bgg: "https://boardgamegeek.com/boardgame/120643/terra-mystica"
     };
 
@@ -103,6 +104,7 @@ export async function runSmokeTests(logger: (msg: string) => void): Promise<{ pa
     assert.equal(parsed.isExpansion, false);
     assert.equal(parsed.descriptionPt, 'Construa seu império e desenvolva facções únicas no Brasil.');
     assert.equal(parsed.bggId, '120643');
+    assert.equal(parsed.spend, 347, 'Deve extrair o valor pago vl_custo como spend');
     assert.equal(parsed.ludoRating, 8.8);
     assert.equal(parsed.rank, 12);
     assert.equal(parsed.isPlayed, false);

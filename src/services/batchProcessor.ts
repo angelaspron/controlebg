@@ -108,8 +108,16 @@ export async function updateSingleGameParallel(
     marketValue = comparaData.usedPrice;
   }
 
+  const currentSpendNum = typeof game.spend === 'string' ? parseFloat(String(game.spend).replace(',', '.')) : Number(game.spend);
+  const updatedSpend = (ludoData?.spend !== undefined && ludoData.spend > 0)
+    ? ludoData.spend
+    : ((isNaN(currentSpendNum) || currentSpendNum <= 0) && ludoData?.spend !== undefined
+        ? ludoData.spend
+        : game.spend);
+
   return {
     ...game,
+    spend: updatedSpend,
     bggId: bggId || game.bggId,
     ludoId: ludoData?.ludoId || game.ludoId,
     type: finalType,
