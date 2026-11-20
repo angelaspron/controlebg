@@ -564,13 +564,30 @@ export function parseLudopediaDetail(data: any, shallowData: any = {}): Ludopedi
   };
 }
 
+function resolveStoredLudoToken(providedToken?: string): string {
+  if (providedToken) return providedToken;
+  if (typeof window === 'undefined') return '';
+  try {
+    const direct = localStorage.getItem('boardgame_manager_ludo_token');
+    if (direct) return direct;
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('boardgame_manager_ludo_token_')) {
+        const val = localStorage.getItem(key);
+        if (val) return val;
+      }
+    }
+  } catch {}
+  return '';
+}
+
 export async function fetchLudopediaData(
   gameName: string,
   token?: string,
   ludoId?: string,
   options: { maxRetries?: number } = {}
 ): Promise<LudopediaParsedData | null> {
-  const resolvedToken = token || (typeof window !== 'undefined' ? localStorage.getItem('boardgame_manager_ludo_token') || '' : '');
+  const resolvedToken = resolveStoredLudoToken(token);
   if (!resolvedToken) return null;
   const maxRetries = options.maxRetries ?? 5;
 
@@ -725,7 +742,7 @@ interface FetchPlaysOptions {
  * autenticação Bearer, rate limiting HTTP 429 e backoff exponencial.
  */
 async function fetchLudoApi(url: string, token: string, maxRetries = 5): Promise<Response | null> {
-  const resolvedToken = token || (typeof window !== 'undefined' ? localStorage.getItem('boardgame_manager_ludo_token') || '' : '');
+  const resolvedToken = resolveStoredLudoToken(token);
   if (!resolvedToken) return null;
 
   let attempt = 0;

@@ -2,8 +2,6 @@ import assert from 'node:assert/strict';
 import { 
   parsePlayCountFromLudo, 
   parseLudopediaDetail,
-  parseIsPlayedFromLudo,
-  isOwnedInLudopedia,
   formatPlayDuration,
   formatMatchDate
 } from '../src/services/ludopediaService.ts';
