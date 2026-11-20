@@ -8,6 +8,7 @@ export interface GameData {
   value: number | string; // 'valor mercado' - valor atual de mercado
   soldValue?: number | string; // valor de venda
   isPlayed?: boolean; // Rastreamento de partidas (Status: Jogado / Não Jogado)
+  playCount?: number; // Quantidade de vezes jogadas (exclusivo da Ludopedia)
   isSealed?: boolean; // Rastreamento de conservação (Status: Lacrado / Aberto)
   
   // Dados extras do BGG & Ludopedia & Compara Jogos
@@ -97,4 +98,54 @@ export interface ColumnMapping {
   value: string;
   soldValue?: string;
 }
+
+// ==========================================
+// ESTRUTURAS DE PARTIDAS (LUDOPEDIA V1 API)
+// ==========================================
+
+export interface LudopediaMatchPlayer {
+  id_partida_jogador: number;
+  nome: string;
+  id_usuario?: number | null;
+  fl_vencedor: number; // 0 ou 1
+  vl_pontos?: number | null;
+  observacao?: string | null;
+  thumb?: string;
+}
+
+export interface LudopediaMatchGame {
+  id_jogo: number;
+  nm_jogo: string;
+  nm_original?: string;
+  thumb?: string;
+  link?: string;
+}
+
+export interface LudopediaMatch {
+  id_partida: number;
+  qt_partidas: number;
+  fl_digital: number; // 0 = Presencial, 1 = Digital
+  duracao: number | null; // Duração em minutos
+  dt_partida: string; // yyyy-mm-dd
+  descricao: string | null;
+  grupo?: {
+    id_grupo_jogo: number;
+    nm_grupo: string;
+  };
+  jogo: LudopediaMatchGame;
+  expansoes?: LudopediaMatchGame[];
+  jogadores: LudopediaMatchPlayer[];
+}
+
+export interface LudopediaPlaysSummary {
+  qt_partidas: number;
+  vl_duracao: number; // Duração acumulada em minutos
+  qt_duracao: number; // Quantidade de partidas com duração cadastrada
+  qt_jogos: number; // Quantidade de jogos únicos
+  qt_expansoes: number; // Quantidade de expansões únicas
+  qt_vitorias: number; // Vitórias do usuário
+  qt_usuarios: number; // Usuários registrados participantes
+  qt_nao_usuarios: number; // Não-usuários registrados
+}
+
 

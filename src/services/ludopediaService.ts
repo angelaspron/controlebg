@@ -1,5 +1,5 @@
 import { matchesGameName } from '../utils/nameMatcher.ts';
-import type { CardSleevesData, CardSleeveSet } from '../types/index.ts';
+import type { CardSleevesData, CardSleeveSet, LudopediaMatch, LudopediaPlaysSummary } from '../types/index.ts';
 import { getCardSleeveSizeName, parseModelDimensions } from '../utils/sleeveUtils.ts';
 
 export interface LudopediaParsedData {
@@ -21,6 +21,7 @@ export interface LudopediaParsedData {
   isOwned?: boolean;
   cardSleeves?: CardSleevesData; // Quantidade e tipos de sleeves extraídos da Ludopedia (fallback secundário)
   spend?: number; // Valor pago pelo usuário (vl_custo)
+  playCount?: number; // Quantidade de partidas jogadas informada pela Ludopedia
 }
 
 /**
@@ -203,6 +204,83 @@ export function parseIsPlayedFromLudo(data: any, shallowData: any = {}): boolean
   if (shallow !== null) return shallow;
 
   return false;
+}
+
+/**
+ * Extrai a quantidade de vezes que o jogo foi jogado na Ludopedia (qt_partidas).
+ * Fonte exclusiva: Ludopedia API.
+ */
+export function parsePlayCountFromLudo(data: any, shallowData: any = {}): number | undefined {
+  const check = (obj: any): number | null => {
+    if (!obj || typeof obj !== 'object') return null;
+
+    if (obj.qt_partidas !== undefined && obj.qt_partidas !== null) {
+      const n = Number(obj.qt_partidas);
+      if (!isNaN(n) && n >= 0) return n;
+    }
+    if (obj.total_partidas !== undefined && obj.total_partidas !== null) {
+      const n = Number(obj.total_partidas);
+      if (!isNaN(n) && n >= 0) return n;
+    }
+    if (obj.qtde_partidas !== undefined && obj.qtde_partidas !== null) {
+      const n = Number(obj.qtde_partidas);
+      if (!isNaN(n) && n >= 0) return n;
+    }
+    if (obj.num_partidas !== undefined && obj.num_partidas !== null) {
+      const n = Number(obj.num_partidas);
+      if (!isNaN(n) && n >= 0) return n;
+    }
+    if (obj.qtde !== undefined && obj.qtde !== null) {
+      const n = Number(obj.qtde);
+      if (!isNaN(n) && n >= 0) return n;
+    }
+    if (obj.playCount !== undefined && obj.playCount !== null) {
+      const n = Number(obj.playCount);
+      if (!isNaN(n) && n >= 0) return n;
+    }
+    if (obj.partidas !== undefined && obj.partidas !== null) {
+      if (typeof obj.partidas === 'number' && !isNaN(obj.partidas) && obj.partidas >= 0) return obj.partidas;
+      if (Array.isArray(obj.partidas)) return obj.partidas.length;
+      if (typeof obj.partidas === 'string') {
+        const n = Number(obj.partidas);
+        if (!isNaN(n) && n >= 0) return n;
+      }
+    }
+
+    // Objetos aninhados retornados pela API da Ludopedia (ex: colecao, item, usuario)
+    if (obj.colecao && typeof obj.colecao === 'object') {
+      const nested = check(obj.colecao);
+      if (nested !== null) return nested;
+    }
+    if (obj.item && typeof obj.item === 'object') {
+      const nested = check(obj.item);
+      if (nested !== null) return nested;
+    }
+    if (obj.usuario && typeof obj.usuario === 'object') {
+      const nested = check(obj.usuario);
+      if (nested !== null) return nested;
+    }
+
+    // Indicador booleano comprovado de que jogou: garante pelo menos 1
+    if (
+      obj.fl_jogou === 1 || obj.fl_jogou === '1' || obj.fl_jogou === true ||
+      obj.fl_jogado === 1 || obj.fl_jogado === '1' || obj.fl_jogado === true ||
+      obj.jogou === 1 || obj.jogou === '1' || obj.jogou === true ||
+      obj.jogado === 1 || obj.jogado === '1' || obj.jogado === true
+    ) {
+      return 1;
+    }
+
+    return null;
+  };
+
+  const primary = check(data);
+  if (primary !== null) return primary;
+
+  const shallow = check(shallowData);
+  if (shallow !== null) return shallow;
+
+  return undefined;
 }
 
 /**
@@ -458,6 +536,10 @@ export function parseLudopediaDetail(data: any, shallowData: any = {}): Ludopedi
 
   const isOwned = isOwnedInLudopedia(data, shallowData);
   const rawIsPlayed = parseIsPlayedFromLudo(data, shallowData);
+  const rawPlayCount = parsePlayCountFromLudo(data, shallowData);
+  const resolvedPlayCount = isOwned
+    ? (rawIsPlayed ? (rawPlayCount && rawPlayCount > 0 ? rawPlayCount : 1) : undefined)
+    : undefined;
 
   return {
     ludoId,
@@ -476,6 +558,7 @@ export function parseLudopediaDetail(data: any, shallowData: any = {}): Ludopedi
     bggId: inferredBggId,
     isOwned,
     isPlayed: isOwned ? rawIsPlayed : false,
+    playCount: resolvedPlayCount,
     cardSleeves: parseLudopediaSleeves(data, shallowData),
     spend,
   };
@@ -590,3 +673,247 @@ export async function fetchLudopediaData(
     return null;
   }
 }
+
+// ==========================================
+// SERVIÇOS DE PARTIDAS (LUDOPEDIA V1 API)
+// ==========================================
+
+/**
+ * Formata minutos em formato amigável (ex: "2h 30m" ou "45 min").
+ */
+export function formatPlayDuration(minutes?: number | null): string {
+  if (minutes === undefined || minutes === null || isNaN(minutes) || minutes <= 0) {
+    return 'Tempo não informado';
+  }
+  const hrs = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  if (hrs > 0 && mins > 0) return `${hrs}h ${mins}m`;
+  if (hrs > 0) return `${hrs}h`;
+  return `${mins} min`;
+}
+
+/**
+ * Formata data ISO (yyyy-mm-dd) em formato brasileiro amigável com dia da semana.
+ */
+export function formatMatchDate(dateStr?: string | null): string {
+  if (!dateStr) return 'Data não informada';
+  try {
+    const [year, month, day] = dateStr.split('-').map(Number);
+    if (!year || !month || !day) return dateStr;
+    const date = new Date(year, month - 1, day);
+    const dayOfWeek = date.toLocaleDateString('pt-BR', { weekday: 'short' });
+    const formatted = `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`;
+    const capitalizedDay = dayOfWeek.charAt(0).toUpperCase() + dayOfWeek.slice(1);
+    return `${capitalizedDay}, ${formatted}`;
+  } catch {
+    return dateStr;
+  }
+}
+
+interface FetchPlaysOptions {
+  page?: number;
+  rows?: number;
+  id_jogo?: number;
+  dt_ini?: string;
+  dt_fim?: string;
+  weekday?: number;
+  maxRetries?: number;
+}
+
+/**
+ * Utilitário central de requisição à API da Ludopedia com suporte a
+ * autenticação Bearer, rate limiting HTTP 429 e backoff exponencial.
+ */
+async function fetchLudoApi(url: string, token: string, maxRetries = 5): Promise<Response | null> {
+  const resolvedToken = token || (typeof window !== 'undefined' ? localStorage.getItem('boardgame_manager_ludo_token') || '' : '');
+  if (!resolvedToken) return null;
+
+  let attempt = 0;
+  while (attempt < maxRetries) {
+    try {
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${resolvedToken}` }
+      });
+
+      if (res.status === 429) {
+        const backoff = Math.min(1000 * Math.pow(2, attempt) + Math.random() * 500, 16000);
+        console.warn(`Ludopedia HTTP 429 (Rate Limit). Aguardando ${Math.round(backoff)}ms...`);
+        await new Promise(r => setTimeout(r, backoff));
+        attempt++;
+        continue;
+      }
+
+      return res;
+    } catch {
+      attempt++;
+      await new Promise(r => setTimeout(r, 1000 * attempt));
+    }
+  }
+  return null;
+}
+
+/**
+ * Consulta uma página de partidas do usuário na Ludopedia (/partidas).
+ */
+export async function fetchLudopediaPlaysList(
+  token: string,
+  options: FetchPlaysOptions = {}
+): Promise<{ partidas: LudopediaMatch[]; total: number }> {
+  const params = new URLSearchParams();
+  params.set('page', String(options.page || 1));
+  params.set('rows', String(Math.min(options.rows || 100, 100)));
+  if (options.id_jogo) params.set('id_jogo', String(options.id_jogo));
+  if (options.dt_ini) params.set('dt_ini', options.dt_ini);
+  if (options.dt_fim) params.set('dt_fim', options.dt_fim);
+  if (options.weekday) params.set('weekday', String(options.weekday));
+
+  const url = `/ludo-api/partidas?${params.toString()}`;
+  const res = await fetchLudoApi(url, token, options.maxRetries ?? 5);
+
+  if (!res || !res.ok) {
+    throw new Error(res ? `Erro na API da Ludopedia (${res.status})` : 'Falha de conexão com a Ludopedia.');
+  }
+
+  const json = await res.json();
+  const rawList = Array.isArray(json.partidas) ? json.partidas : (Array.isArray(json) ? json : []);
+  const total = Number(json.total) || rawList.length;
+
+  return {
+    partidas: rawList as LudopediaMatch[],
+    total
+  };
+}
+
+/**
+ * Consulta o resumo estatístico geral de partidas do usuário (/partidas/resumo).
+ */
+export async function fetchLudopediaPlaysSummary(
+  token: string,
+  options: { id_jogo?: number; dt_ini?: string; dt_fim?: string; weekday?: number } = {}
+): Promise<LudopediaPlaysSummary | null> {
+  const params = new URLSearchParams();
+  if (options.id_jogo) params.set('id_jogo', String(options.id_jogo));
+  if (options.dt_ini) params.set('dt_ini', options.dt_ini);
+  if (options.dt_fim) params.set('dt_fim', options.dt_fim);
+  if (options.weekday) params.set('weekday', String(options.weekday));
+
+  const url = `/ludo-api/partidas/resumo${params.toString() ? `?${params.toString()}` : ''}`;
+  const res = await fetchLudoApi(url, token, 3);
+
+  if (!res || !res.ok) return null;
+
+  try {
+    const json = await res.json();
+    return {
+      qt_partidas: Number(json.qt_partidas || 0),
+      vl_duracao: Number(json.vl_duracao || 0),
+      qt_duracao: Number(json.qt_duracao || 0),
+      qt_jogos: Number(json.qt_jogos || 0),
+      qt_expansoes: Number(json.qt_expansoes || 0),
+      qt_vitorias: Number(json.qt_vitorias || 0),
+      qt_usuarios: Number(json.qt_usuarios || 0),
+      qt_nao_usuarios: Number(json.qt_nao_usuarios || 0),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Busca todas as partidas registradas pelo usuário na Ludopedia com paginação sequencial e resiliente.
+ */
+export async function fetchAllLudopediaPlays(
+  token: string,
+  onProgress?: (loaded: number, total: number) => void
+): Promise<{ partidas: LudopediaMatch[]; summary: LudopediaPlaysSummary | null }> {
+  if (!token) {
+    throw new Error('Token da Ludopedia não configurado.');
+  }
+
+  // 1. Tentar obter o resumo agregado primeiro para saber o volume de partidas
+  const summary = await fetchLudopediaPlaysSummary(token);
+
+  let allPartidas: LudopediaMatch[] = [];
+  let currentPage = 1;
+  let totalReported = summary?.qt_partidas || 0;
+  let hasMore = true;
+
+  while (hasMore) {
+    const pageData = await fetchLudopediaPlaysList(token, { page: currentPage, rows: 100 });
+    const items = pageData.partidas || [];
+    if (items.length === 0) break;
+
+    allPartidas = allPartidas.concat(items);
+    totalReported = Math.max(totalReported, pageData.total);
+
+    if (onProgress) {
+      onProgress(allPartidas.length, totalReported);
+    }
+
+    if (allPartidas.length >= totalReported || items.length < 100) {
+      hasMore = false;
+    } else {
+      currentPage++;
+      // Pequeno intervalo entre páginas para evitar rate limits
+      await new Promise(r => setTimeout(r, 250));
+    }
+  }
+
+  return {
+    partidas: allPartidas,
+    summary
+  };
+}
+
+/**
+ * Agrupa partidas por jogo da Ludopedia (/partidas/group?groupby=jogos) para mapear
+ * a quantidade exata de partidas de cada jogo cadastrado.
+ */
+export async function fetchLudopediaPlaysGroupedByGame(
+  token: string
+): Promise<{ countByLudoId: Record<string, number>; countByName: Record<string, number> }> {
+  const countByLudoId: Record<string, number> = {};
+  const countByName: Record<string, number> = {};
+
+  if (!token) return { countByLudoId, countByName };
+
+  let currentPage = 1;
+  let hasMore = true;
+
+  while (hasMore) {
+    const url = `/ludo-api/partidas/group?groupby=jogos&rows=100&page=${currentPage}`;
+    const res = await fetchLudoApi(url, token, 3);
+    if (!res || !res.ok) break;
+
+    try {
+      const json = await res.json();
+      const list = Array.isArray(json.jogos) ? json.jogos : (Array.isArray(json) ? json : []);
+      if (list.length === 0) break;
+
+      for (const item of list) {
+        const id = item.id_jogo || item.jogo?.id_jogo;
+        const name = item.nm_jogo || item.jogo?.nm_jogo;
+        const count = Number(item.qtde || item.qt_partidas || item.total_partidas || item.total || item.count || 1);
+
+        if (id) countByLudoId[String(id)] = count;
+        if (name) {
+          const norm = String(name).trim().toLowerCase();
+          countByName[norm] = count;
+        }
+      }
+
+      const total = Number(json.total) || list.length;
+      if (currentPage * 100 >= total || list.length < 100) {
+        hasMore = false;
+      } else {
+        currentPage++;
+        await new Promise(r => setTimeout(r, 200));
+      }
+    } catch {
+      break;
+    }
+  }
+
+  return { countByLudoId, countByName };
+}
+

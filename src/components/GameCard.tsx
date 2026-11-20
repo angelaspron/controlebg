@@ -1,6 +1,6 @@
 import { memo, useCallback } from 'react';
 import type { GameData } from '../types';
-import { Users, Star, Package, Pencil, Brain, Trophy, Award, Loader2, Check, RefreshCw } from 'lucide-react';
+import { Users, Star, Package, Pencil, Brain, Trophy, Award, Loader2, Check, RefreshCw, Dices } from 'lucide-react';
 import { getGameSleeveStatus } from '../utils/sleeveUtils';
 
 interface GameCardProps {
@@ -213,7 +213,7 @@ export const GameCard = memo(function GameCard({
         <div className="game-meta">
           <span className={typeClass}>{game.type || 'Base'}</span>
           {game.yearPublished && <span>({game.yearPublished})</span>}
-          {game.isPlayed !== undefined && (
+          {(game.isPlayed !== undefined || (game.playCount !== undefined && game.playCount > 0)) && (
             <span
               style={{
                 display: 'inline-flex',
@@ -227,9 +227,26 @@ export const GameCard = memo(function GameCard({
                 color: game.isPlayed ? '#34d399' : '#94a3b8',
                 border: `1px solid ${game.isPlayed ? 'rgba(16, 185, 129, 0.35)' : 'rgba(148, 163, 184, 0.25)'}`
               }}
-              title={game.isPlayed ? 'Jogo registrado como Jogado' : 'Jogo registrado como Não Jogado'}
+              title={
+                game.isPlayed
+                  ? (game.playCount !== undefined && game.playCount > 0
+                      ? `Jogado ${game.playCount} ${game.playCount === 1 ? 'partida' : 'partidas'} (Ludopedia)`
+                      : 'Jogo registrado como Jogado')
+                  : 'Jogo registrado como Não Jogado'
+              }
             >
-              {game.isPlayed ? '✔ Jogado' : 'Não Jogado'}
+              {game.isPlayed ? (
+                game.playCount !== undefined && game.playCount > 0 ? (
+                  <>
+                    <Dices size={11} style={{ marginRight: '1px' }} />
+                    {game.playCount} {game.playCount === 1 ? 'partida' : 'partidas'}
+                  </>
+                ) : (
+                  '✔ Jogado'
+                )
+              ) : (
+                'Não Jogado'
+              )}
             </span>
           )}
           {game.isSealed && (

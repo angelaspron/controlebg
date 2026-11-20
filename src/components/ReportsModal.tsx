@@ -10,11 +10,12 @@ interface ReportsModalProps {
   isOpen: boolean;
   onClose: () => void;
   games: GameData[];
+  onOpenPlaysReport?: () => void;
 }
 
 const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
 
-export function ReportsModal({ isOpen, onClose, games }: ReportsModalProps) {
+export function ReportsModal({ isOpen, onClose, games, onOpenPlaysReport }: ReportsModalProps) {
   
   // 1. Tipos de Jogo
   const typeData = useMemo(() => {
@@ -159,8 +160,28 @@ export function ReportsModal({ isOpen, onClose, games }: ReportsModalProps) {
         <div style={{ flex: 1, overflowY: 'auto', paddingRight: '0.5rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '2rem' }}>
           
           {/* Rastreamento de Partidas: Base vs Expansões x Jogado vs Não Jogado */}
-          <div className="glass-panel" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', background: 'rgba(255,255,255,0.02)' }}>
-            <h3 style={{ fontSize: '1.2rem', marginBottom: '1rem', color: 'var(--text-muted)' }}>Partidas: Base vs Expansão (Jogados x Não Jogados)</h3>
+          <div 
+            onClick={onOpenPlaysReport}
+            className="glass-panel" 
+            style={{ 
+              padding: '1rem', 
+              display: 'flex', 
+              flexDirection: 'column', 
+              alignItems: 'center', 
+              background: 'rgba(255,255,255,0.02)',
+              cursor: onOpenPlaysReport ? 'pointer' : 'default',
+              position: 'relative'
+            }}
+            title={onOpenPlaysReport ? "Clique para abrir o relatório completo de partidas da Ludopedia" : undefined}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '8px' }}>
+              <h3 style={{ fontSize: '1.2rem', margin: 0, color: 'var(--text-muted)' }}>Partidas: Base vs Expansão (Jogados x Não Jogados)</h3>
+              {onOpenPlaysReport && (
+                <span style={{ fontSize: '0.75rem', color: '#38bdf8', fontWeight: 600, background: 'rgba(56, 189, 248, 0.15)', padding: '2px 8px', borderRadius: '10px' }}>
+                  Ver Relatório Completo →
+                </span>
+              )}
+            </div>
             <div style={{ width: '100%', height: 300 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>

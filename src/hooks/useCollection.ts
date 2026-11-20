@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import type { GameData, ColumnMapping, SleeveStockItem } from '../types';
 import type { User } from '@supabase/supabase-js';
 import * as XLSX from 'xlsx';
@@ -18,7 +18,7 @@ import {
   type BatchProgress 
 } from '../services/batchProcessor';
 import { fetchBGGThingWithRetry, searchBGGId, DEFAULT_BGG_TOKEN, fetchBGGSleeves } from '../services/bggService';
-import { fetchLudopediaData, parseIsPlayedFromLudo, isOwnedInLudopedia } from '../services/ludopediaService';
+import { fetchLudopediaData, parseIsPlayedFromLudo, parsePlayCountFromLudo, isOwnedInLudopedia } from '../services/ludopediaService';
 import { fetchComparaJogosData, searchBggIdViaCompara } from '../services/comparaService';
 import { matchesGameName, normalizeGameName } from '../utils/nameMatcher';
 import { isGameInCollection, getGameSleeveStatus } from '../utils/sleeveUtils';
@@ -535,6 +535,7 @@ export function useCollection(user?: User | null) {
                       ? ludoData.isPlayed
                       : Boolean(g.isPlayed || ludoData.isPlayed))
                   : undefined,
+                playCount: ludoData.playCount !== undefined ? ludoData.playCount : g.playCount,
               };
             }));
           }
@@ -854,6 +855,7 @@ export function useCollection(user?: User | null) {
       // o status isPlayed dos jogos que comprovadamente pertencem à coleção
       const playedGameIds = new Set<string>();
       const playedGameNames = new Set<string>();
+      const playedGameCounts = new Map<string, number>();
       try {
         const partRes = await fetch('/ludo-api/partidas/group?groupby=jogos&rows=100', {
           headers: { 'Authorization': `Bearer ${ludoToken}` }
@@ -862,10 +864,23 @@ export function useCollection(user?: User | null) {
           const partJson = await partRes.json();
           const groupItems = Array.isArray(partJson.jogos) ? partJson.jogos : (Array.isArray(partJson) ? partJson : []);
           for (const pj of groupItems) {
-            if (pj.id_jogo) playedGameIds.add(String(pj.id_jogo));
-            if (pj.jogo?.id_jogo) playedGameIds.add(String(pj.jogo.id_jogo));
-            if (pj.nm_jogo) playedGameNames.add(normalizeGameName(pj.nm_jogo));
-            if (pj.jogo?.nm_jogo) playedGameNames.add(normalizeGameName(pj.jogo.nm_jogo));
+            const pCount = Number(pj.qtde || pj.qt_partidas || pj.total_partidas || pj.total || pj.count || 1);
+            if (pj.id_jogo) {
+              playedGameIds.add(String(pj.id_jogo));
+              playedGameCounts.set(String(pj.id_jogo), pCount);
+            }
+            if (pj.jogo?.id_jogo) {
+              playedGameIds.add(String(pj.jogo.id_jogo));
+              playedGameCounts.set(String(pj.jogo.id_jogo), pCount);
+            }
+            if (pj.nm_jogo) {
+              playedGameNames.add(normalizeGameName(pj.nm_jogo));
+              playedGameCounts.set(normalizeGameName(pj.nm_jogo), pCount);
+            }
+            if (pj.jogo?.nm_jogo) {
+              playedGameNames.add(normalizeGameName(pj.jogo.nm_jogo));
+              playedGameCounts.set(normalizeGameName(pj.jogo.nm_jogo), pCount);
+            }
           }
         }
       } catch {
@@ -920,6 +935,13 @@ export function useCollection(user?: User | null) {
             playedGameNames.has(normalizeGameName(item.nm_jogo))
           );
 
+          const ludoPlayCount = (item.id_jogo && playedGameCounts.get(String(item.id_jogo))) ||
+            playedGameCounts.get(normalizeGameName(item.nm_jogo)) ||
+            parsePlayCountFromLudo(item);
+          const resolvedPlayCount = isOwned && isPlayedInLudo
+            ? (ludoPlayCount && ludoPlayCount > 0 ? ludoPlayCount : 1)
+            : undefined;
+
           let mappedStatus = 'Desconhecido';
           if (item.fl_tem) mappedStatus = 'Na Coleção';
           else if (item.fl_teve) mappedStatus = 'Vendido';
@@ -938,6 +960,7 @@ export function useCollection(user?: User | null) {
             thumbnail: item.thumb,
             ludoRating: item.vl_nota ? parseFloat(item.vl_nota) : undefined,
             isPlayed: isPlayedInLudo,
+            playCount: resolvedPlayCount,
             _isOwned: isOwned,
           } as GameData;
         });
@@ -977,6 +1000,7 @@ export function useCollection(user?: User | null) {
                 // Para expansão: o status isPlayed deve refletir diretamente a API da Ludopedia.
                 // Se na API não constar JOGADO, vem como NÃO JOGADO (sem herdar do jogo base ou do cache).
                 isPlayed: isExpTarget ? ng.isPlayed : Boolean(prevG.isPlayed || ng.isPlayed),
+                playCount: ng.playCount !== undefined ? ng.playCount : prevG.playCount,
               };
             } else {
               // Diretriz 2: Bloqueio de Inserção Indevida
@@ -991,30 +1015,22 @@ export function useCollection(user?: User | null) {
             }
           }
 
-          // Se houver jogos em partidas da Ludopedia que já existem localmente, garantir isPlayed = true
+          // Se houver jogos em partidas da Ludopedia que já existem localmente, garantir isPlayed = true e playCount correto
           if (playedGameIds.size > 0 || playedGameNames.size > 0) {
             for (let i = 0; i < newPrev.length; i++) {
               const g = newPrev[i];
-              if (!g.isPlayed) {
-                const isGExp = g.type === 'Expansão' || (g as any).isExpansion === true;
-                // REGRA CRÍTICA: Expansões NÃO devem assumir partidas do jogo base!
-                // O status de jogado de uma expansão deve vir diretamente dos registros da própria expansão.
-                if (isGExp) {
-                  if (
-                    (g.ludoId && playedGameIds.has(g.ludoId)) ||
-                    playedGameNames.has(normalizeGameName(g.name))
-                  ) {
-                    newPrev[i] = { ...g, isPlayed: true };
-                  }
-                } else {
-                  if (
-                    (g.ludoId && playedGameIds.has(g.ludoId)) ||
-                    playedGameNames.has(normalizeGameName(g.name)) ||
-                    Array.from(playedGameNames).some(pn => matchesGameName(g.name, pn))
-                  ) {
-                    newPrev[i] = { ...g, isPlayed: true };
-                  }
-                }
+              const isGExp = g.type === 'Expansão' || (g as any).isExpansion === true;
+              const isMatchedInPlayed = isGExp
+                ? ((g.ludoId && playedGameIds.has(g.ludoId)) || playedGameNames.has(normalizeGameName(g.name)))
+                : ((g.ludoId && playedGameIds.has(g.ludoId)) || playedGameNames.has(normalizeGameName(g.name)) || Array.from(playedGameNames).some(pn => matchesGameName(g.name, pn)));
+
+              if (isMatchedInPlayed) {
+                const pCount = (g.ludoId && playedGameCounts.get(g.ludoId)) || playedGameCounts.get(normalizeGameName(g.name));
+                newPrev[i] = {
+                  ...g,
+                  isPlayed: true,
+                  playCount: pCount !== undefined ? pCount : (g.playCount && g.playCount > 0 ? g.playCount : 1),
+                };
               }
             }
           }
@@ -1306,6 +1322,29 @@ export function useCollection(user?: User | null) {
     });
   };
 
+  const syncPlayCounts = useCallback((countsByLudoId: Record<string, number>, countsByName: Record<string, number>) => {
+    setGames(prev => {
+      let changed = false;
+      const next = prev.map(g => {
+        const normName = normalizeGameName(g.name);
+        const count = (g.ludoId && countsByLudoId[g.ludoId] !== undefined)
+          ? countsByLudoId[g.ludoId]
+          : countsByName[normName];
+
+        if (count !== undefined && count !== g.playCount) {
+          changed = true;
+          return {
+            ...g,
+            playCount: count,
+            isPlayed: count > 0 ? true : g.isPlayed
+          };
+        }
+        return g;
+      });
+      return changed ? next : prev;
+    });
+  }, []);
+
   return {
     games,
     columnMapping,
@@ -1329,6 +1368,7 @@ export function useCollection(user?: User | null) {
     processExcelUpload,
     fetchBGGCollection,
     fetchLudoCollection,
+    syncPlayCounts,
     clearCollection,
     exportToExcel,
     exportToJson,

@@ -17,9 +17,10 @@ import '../components.css';
 
 interface PlayedStatusChartProps {
   games: GameData[];
+  onOpenPlaysReport?: () => void;
 }
 
-export function PlayedStatusChart({ games }: PlayedStatusChartProps) {
+export function PlayedStatusChart({ games, onOpenPlaysReport }: PlayedStatusChartProps) {
   const [chartType, setChartType] = useState<'donut' | 'bar'>('donut');
 
   const stats = useMemo(() => {
@@ -123,42 +124,71 @@ export function PlayedStatusChart({ games }: PlayedStatusChartProps) {
           </div>
         </div>
 
-        {/* Alternador de Visualização (Donut / Barras) */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: 'rgba(0, 0, 0, 0.25)', padding: '3px', borderRadius: '8px' }}>
-          <button
-            type="button"
-            onClick={() => setChartType('donut')}
-            className="btn"
-            style={{
-              padding: '0.35rem 0.65rem',
-              fontSize: '0.8rem',
-              borderRadius: '6px',
-              border: 'none',
-              background: chartType === 'donut' ? 'var(--accent)' : 'transparent',
-              color: chartType === 'donut' ? '#fff' : 'var(--text-muted)',
-              cursor: 'pointer'
-            }}
-            title="Exibir gráfico de rosca (donut)"
-          >
-            <PieIcon size={14} /> Rosca
-          </button>
-          <button
-            type="button"
-            onClick={() => setChartType('bar')}
-            className="btn"
-            style={{
-              padding: '0.35rem 0.65rem',
-              fontSize: '0.8rem',
-              borderRadius: '6px',
-              border: 'none',
-              background: chartType === 'bar' ? 'var(--accent)' : 'transparent',
-              color: chartType === 'bar' ? '#fff' : 'var(--text-muted)',
-              cursor: 'pointer'
-            }}
-            title="Exibir gráfico de barras verticais"
-          >
-            <BarChart3 size={14} /> Barras
-          </button>
+        {/* Ações do Topo: Relatório Completo + Alternador de Visualização */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
+          {onOpenPlaysReport && (
+            <button
+              type="button"
+              onClick={onOpenPlaysReport}
+              className="btn btn-primary"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.45rem',
+                padding: '0.4rem 0.85rem',
+                fontSize: '0.82rem',
+                fontWeight: 600,
+                borderRadius: '8px',
+                background: 'linear-gradient(135deg, #10b981, #6366f1)',
+                borderColor: 'transparent',
+                color: '#ffffff',
+                boxShadow: '0 4px 14px rgba(16, 185, 129, 0.35)',
+                cursor: 'pointer',
+              }}
+              title="Abrir relatório detalhado com tempo, data, jogadores e placares da Ludopedia"
+            >
+              <Dices size={15} />
+              Relatório de Partidas
+            </button>
+          )}
+
+          {/* Alternador de Visualização (Donut / Barras) */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: 'rgba(0, 0, 0, 0.25)', padding: '3px', borderRadius: '8px' }}>
+            <button
+              type="button"
+              onClick={() => setChartType('donut')}
+              className="btn"
+              style={{
+                padding: '0.35rem 0.65rem',
+                fontSize: '0.8rem',
+                borderRadius: '6px',
+                border: 'none',
+                background: chartType === 'donut' ? 'var(--accent)' : 'transparent',
+                color: chartType === 'donut' ? '#fff' : 'var(--text-muted)',
+                cursor: 'pointer'
+              }}
+              title="Exibir gráfico de rosca (donut)"
+            >
+              <PieIcon size={14} /> Rosca
+            </button>
+            <button
+              type="button"
+              onClick={() => setChartType('bar')}
+              className="btn"
+              style={{
+                padding: '0.35rem 0.65rem',
+                fontSize: '0.8rem',
+                borderRadius: '6px',
+                border: 'none',
+                background: chartType === 'bar' ? 'var(--accent)' : 'transparent',
+                color: chartType === 'bar' ? '#fff' : 'var(--text-muted)',
+                cursor: 'pointer'
+              }}
+              title="Exibir gráfico de barras verticais"
+            >
+              <BarChart3 size={14} /> Barras
+            </button>
+          </div>
         </div>
       </div>
 
@@ -177,13 +207,18 @@ export function PlayedStatusChart({ games }: PlayedStatusChartProps) {
             gap: '0.75rem'
           }}>
             {/* 1. Jogos Base Jogados */}
-            <div style={{
-              background: 'rgba(16, 185, 129, 0.08)',
-              border: '1px solid rgba(16, 185, 129, 0.25)',
-              borderRadius: '12px',
-              padding: '0.85rem 1rem',
-              transition: 'var(--transition)'
-            }}>
+            <div 
+              onClick={onOpenPlaysReport}
+              style={{
+                background: 'rgba(16, 185, 129, 0.08)',
+                border: '1px solid rgba(16, 185, 129, 0.25)',
+                borderRadius: '12px',
+                padding: '0.85rem 1rem',
+                transition: 'var(--transition)',
+                cursor: onOpenPlaysReport ? 'pointer' : 'default'
+              }}
+              title={onOpenPlaysReport ? "Clique para abrir relatório de partidas" : undefined}
+            >
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
                 <span style={{ fontSize: '0.78rem', color: '#6ee7b7', fontWeight: 600 }}>Base Jogados</span>
                 <CheckCircle2 size={16} color="#10b981" />
@@ -217,13 +252,18 @@ export function PlayedStatusChart({ games }: PlayedStatusChartProps) {
             </div>
 
             {/* 3. Expansões Jogadas */}
-            <div style={{
-              background: 'rgba(139, 92, 246, 0.08)',
-              border: '1px solid rgba(139, 92, 246, 0.25)',
-              borderRadius: '12px',
-              padding: '0.85rem 1rem',
-              transition: 'var(--transition)'
-            }}>
+            <div 
+              onClick={onOpenPlaysReport}
+              style={{
+                background: 'rgba(139, 92, 246, 0.08)',
+                border: '1px solid rgba(139, 92, 246, 0.25)',
+                borderRadius: '12px',
+                padding: '0.85rem 1rem',
+                transition: 'var(--transition)',
+                cursor: onOpenPlaysReport ? 'pointer' : 'default'
+              }}
+              title={onOpenPlaysReport ? "Clique para abrir relatório de partidas" : undefined}
+            >
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
                 <span style={{ fontSize: '0.78rem', color: '#c4b5fd', fontWeight: 600 }}>Expansões Jogadas</span>
                 <Sparkles size={16} color="#8b5cf6" />
@@ -283,14 +323,21 @@ export function PlayedStatusChart({ games }: PlayedStatusChartProps) {
         </div>
 
         {/* Lado Direito: Gráfico Visual Recharts */}
-        <div style={{
-          height: 250,
-          width: '100%',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          position: 'relative'
-        }}>
+        <div 
+          onClick={onOpenPlaysReport}
+          style={{
+            height: 250,
+            width: '100%',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            position: 'relative',
+            cursor: onOpenPlaysReport ? 'pointer' : 'default',
+            transition: 'transform 0.2s ease',
+          }}
+          title={onOpenPlaysReport ? "Clique para abrir o relatório completo de partidas da Ludopedia" : undefined}
+        >
           {!hasData ? (
             <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
               Nenhum dado disponível para os filtros atuais.
@@ -361,6 +408,20 @@ export function PlayedStatusChart({ games }: PlayedStatusChartProps) {
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
+          )}
+
+          {hasData && onOpenPlaysReport && (
+            <div style={{
+              marginTop: '4px',
+              fontSize: '0.74rem',
+              color: '#93c5fd',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              opacity: 0.85
+            }}>
+              <span>📊 Clique no gráfico para abrir o relatório completo de partidas</span>
+            </div>
           )}
         </div>
       </div>

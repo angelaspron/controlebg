@@ -530,7 +530,7 @@ export function GameDetailsModal({
                     <Calendar size={14} /> {game.yearPublished}
                   </span>
                 )}
-                {game.isPlayed !== undefined && (
+                {(game.isPlayed !== undefined || (game.playCount !== undefined && game.playCount > 0)) && (
                   <span
                     style={{
                       display: 'inline-flex',
@@ -544,8 +544,23 @@ export function GameDetailsModal({
                       color: game.isPlayed ? '#34d399' : '#94a3b8',
                       border: `1px solid ${game.isPlayed ? 'rgba(16, 185, 129, 0.4)' : 'rgba(148, 163, 184, 0.3)'}`
                     }}
+                    title={
+                      game.isPlayed
+                        ? (game.playCount !== undefined && game.playCount > 0
+                            ? `Jogado ${game.playCount} ${game.playCount === 1 ? 'partida' : 'partidas'} (Ludopedia)`
+                            : 'Jogo registrado como Jogado')
+                        : 'Jogo registrado como Não Jogado'
+                    }
                   >
-                    {game.isPlayed ? '✔ Jogado' : 'Não Jogado'}
+                    {game.isPlayed ? (
+                      game.playCount !== undefined && game.playCount > 0 ? (
+                        <>🎲 {game.playCount} {game.playCount === 1 ? 'partida' : 'partidas'}</>
+                      ) : (
+                        '✔ Jogado'
+                      )
+                    ) : (
+                      'Não Jogado'
+                    )}
                   </span>
                 )}
                 {game.isSealed && (

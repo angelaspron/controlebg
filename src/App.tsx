@@ -11,6 +11,7 @@ import { SettingsModal } from './components/SettingsModal';
 import { BGGImportModal } from './components/BGGImportModal';
 import { LudoImportModal } from './components/LudoImportModal';
 import { ReportsModal } from './components/ReportsModal';
+import { PlaysReportModal } from './components/PlaysReportModal';
 import { HelpModal } from './components/HelpModal';
 import { PlayedStatusChart } from './components/PlayedStatusChart';
 import { SleevesStockTab } from './components/SleevesStockTab';
@@ -37,6 +38,7 @@ function App() {
     processExcelUpload, 
     fetchBGGCollection, 
     fetchLudoCollection, 
+    syncPlayCounts,
     clearCollection, 
     exportToExcel, 
     exportToJson, 
@@ -79,6 +81,7 @@ function App() {
   const [isBGGModalOpen, setIsBGGModalOpen] = useState(false);
   const [isLudoModalOpen, setIsLudoModalOpen] = useState(false);
   const [isReportsModalOpen, setIsReportsModalOpen] = useState(false);
+  const [isPlaysReportOpen, setIsPlaysReportOpen] = useState(false);
   const [isWhoGoesOpen, setIsWhoGoesOpen] = useState(false);
   const [editingGame, setEditingGame] = useState<GameData | null>(null);
   const [viewingGame, setViewingGame] = useState<GameData | null>(null);
@@ -405,6 +408,9 @@ function App() {
             <button className="btn" onClick={() => setIsReportsModalOpen(true)} title="Visualizar gráficos e estatísticas da sua coleção" style={{ padding: '0.5rem 0.75rem', fontSize: '0.85rem', background: 'var(--accent)', color: '#fff', borderColor: 'var(--accent)' }}>
               <PieChart size={16} /> Estatísticas
             </button>
+            <button className="btn" onClick={() => setIsPlaysReportOpen(true)} title="Histórico e relatório completo de partidas da Ludopedia" style={{ padding: '0.5rem 0.75rem', fontSize: '0.85rem', background: 'rgba(16, 185, 129, 0.15)', borderColor: 'rgba(16, 185, 129, 0.35)', color: '#34d399' }}>
+              <Dices size={16} color="#10b981" /> Partidas
+            </button>
             <button className="btn" onClick={() => setIsSettingsModalOpen(true)} title="Ajustar configurações e mapeamento de colunas" style={{ padding: '0.5rem 0.75rem', fontSize: '0.85rem' }}>
               <Settings size={16} /> Configurações
             </button>
@@ -561,7 +567,10 @@ function App() {
             </div>
 
             {/* Dashboard Analítico: Rastreamento de Partidas (Base vs Expansões x Jogado vs Não Jogado) */}
-            <PlayedStatusChart games={filteredGames} />
+            <PlayedStatusChart 
+              games={filteredGames} 
+              onOpenPlaysReport={() => setIsPlaysReportOpen(true)}
+            />
 
             {selectedGameIds.size > 0 && (
               <div className="glass-panel" style={{padding: '1rem', marginBottom: '2rem', display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap'}}>
@@ -769,6 +778,22 @@ function App() {
       isOpen={isReportsModalOpen}
       onClose={() => setIsReportsModalOpen(false)}
       games={games}
+      onOpenPlaysReport={() => {
+        setIsReportsModalOpen(false);
+        setIsPlaysReportOpen(true);
+      }}
+    />
+
+    <PlaysReportModal
+      isOpen={isPlaysReportOpen}
+      onClose={() => setIsPlaysReportOpen(false)}
+      ludoToken={ludoToken}
+      onOpenSettings={() => {
+        setIsPlaysReportOpen(false);
+        setIsSettingsModalOpen(true);
+      }}
+      games={games}
+      onSyncPlayCounts={syncPlayCounts}
     />
 
     <HelpModal
