@@ -3,7 +3,7 @@ import {
   X, Dices, Clock, Trophy, Calendar, Users, Search, 
   RefreshCw, Sparkles, Monitor, Home, ExternalLink,
   ChevronDown, ChevronUp, AlertCircle, BarChart3, ListFilter,
-  FileSpreadsheet
+  FileSpreadsheet, Filter
 } from 'lucide-react';
 import type { GameData, LudopediaMatch, LudopediaPlaysSummary } from '../types';
 import { 
@@ -51,6 +51,20 @@ export function PlaysReportModal({
   const [dateEnd, setDateEnd] = useState('');
   const [sortBy, setSortBy] = useState<'date_desc' | 'date_asc' | 'duration_desc' | 'game_name'>('date_desc');
   const [expandedMatchId, setExpandedMatchId] = useState<number | null>(null);
+  const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState(false);
+
+  // Contagem de filtros ativos para badge no mobile
+  const activeFiltersCount = useMemo(() => {
+    let count = 0;
+    if (selectedGameId !== 'todos') count++;
+    if (selectedPlayer !== 'todos') count++;
+    if (typeFilter !== 'todos') count++;
+    if (victoryFilter !== 'todos') count++;
+    if (dateStart) count++;
+    if (dateEnd) count++;
+    if (sortBy !== 'date_desc') count++;
+    return count;
+  }, [selectedGameId, selectedPlayer, typeFilter, victoryFilter, dateStart, dateEnd, sortBy]);
 
   // Carregar dados da Ludopedia ao abrir o modal
   const loadPlaysData = useCallback(async (force = false) => {
@@ -370,79 +384,46 @@ export function PlaysReportModal({
   if (!isOpen) return null;
 
   return (
-    <div className="modal-overlay" style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: 'rgba(5, 10, 24, 0.88)',
-      backdropFilter: 'blur(10px)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 1000,
-      padding: '1rem',
-    }}>
-      <div className="glass-panel animate-fade-in" style={{
-        width: '100%',
-        maxWidth: '1280px',
-        height: '92vh',
-        display: 'flex',
-        flexDirection: 'column',
-        position: 'relative',
-        borderRadius: '16px',
-        overflow: 'hidden',
-        border: '1px solid rgba(255, 255, 255, 0.12)',
-        background: 'rgba(15, 23, 42, 0.96)',
-        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.7)'
-      }}>
+    <div className="modal-overlay plays-modal-overlay" onClick={onClose}>
+      <div className="glass-panel plays-modal-container animate-fade-in" onClick={e => e.stopPropagation()}>
         {/* Header Superior */}
-        <div style={{
-          padding: '1.25rem 1.75rem',
-          borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: '1rem',
-          background: 'rgba(30, 41, 59, 0.5)'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+        <div className="plays-modal-header">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0 }}>
             <div style={{
               background: 'linear-gradient(135deg, #10b981, #6366f1)',
-              padding: '10px',
-              borderRadius: '12px',
+              padding: '8px',
+              borderRadius: '10px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              boxShadow: '0 4px 16px rgba(16, 185, 129, 0.35)'
+              boxShadow: '0 4px 16px rgba(16, 185, 129, 0.35)',
+              flexShrink: 0
             }}>
-              <Dices size={24} color="#ffffff" />
+              <Dices size={22} color="#ffffff" />
             </div>
-            <div>
-              <h2 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 800, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                Relatório Completo de Partidas
+            <div className="header-title-block" style={{ minWidth: 0 }}>
+              <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <span>Relatório de Partidas</span>
                 <span style={{
-                  fontSize: '0.72rem',
+                  fontSize: '0.7rem',
                   fontWeight: 600,
-                  padding: '3px 8px',
-                  borderRadius: '12px',
+                  padding: '2px 7px',
+                  borderRadius: '10px',
                   background: 'rgba(56, 189, 248, 0.15)',
                   color: '#38bdf8',
                   border: '1px solid rgba(56, 189, 248, 0.3)'
                 }}>
-                  Ludopedia API v1
+                  Ludopedia API
                 </span>
               </h2>
-              <p style={{ margin: '3px 0 0', fontSize: '0.83rem', color: 'var(--text-muted)' }}>
-                Histórico detalhado com datas, tempos de partida, placares e estatísticas puxados exclusivamente da Ludopedia
+              <p className="header-subtitle" style={{ margin: '2px 0 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                Histórico detalhado com datas, tempos, placares e estatísticas puxados exclusivamente da Ludopedia
               </p>
             </div>
           </div>
 
           {/* Botões de Ação do Topo */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
             {ludoToken && (
               <>
                 <button
@@ -451,16 +432,16 @@ export function PlaysReportModal({
                   disabled={isLoading}
                   className="btn"
                   style={{
-                    padding: '0.45rem 0.85rem',
-                    fontSize: '0.82rem',
+                    padding: '0.4rem 0.75rem',
+                    fontSize: '0.8rem',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '6px'
+                    gap: '5px'
                   }}
                   title="Recarregar partidas da API da Ludopedia"
                 >
-                  <RefreshCw size={14} style={{ animation: isLoading ? 'spin 1s linear infinite' : 'none' }} />
-                  {isLoading ? 'Sincronizando...' : 'Sincronizar'}
+                  <RefreshCw size={13} style={{ animation: isLoading ? 'spin 1s linear infinite' : 'none' }} />
+                  <span>{isLoading ? '...' : 'Sincronizar'}</span>
                 </button>
                 <button
                   type="button"
@@ -468,16 +449,16 @@ export function PlaysReportModal({
                   disabled={filteredMatches.length === 0}
                   className="btn"
                   style={{
-                    padding: '0.45rem 0.85rem',
-                    fontSize: '0.82rem',
+                    padding: '0.4rem 0.75rem',
+                    fontSize: '0.8rem',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '6px'
+                    gap: '5px'
                   }}
                   title="Exportar partidas filtradas para Excel"
                 >
-                  <FileSpreadsheet size={14} color="#10b981" />
-                  Excel
+                  <FileSpreadsheet size={13} color="#10b981" />
+                  <span>Excel</span>
                 </button>
               </>
             )}
@@ -490,14 +471,17 @@ export function PlaysReportModal({
                 border: 'none',
                 color: 'var(--text-muted)',
                 cursor: 'pointer',
-                padding: '4px',
+                padding: '6px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 borderRadius: '8px',
-                transition: 'color 0.2s'
+                transition: 'color 0.2s',
+                minWidth: '36px',
+                minHeight: '36px'
               }}
               aria-label="Fechar"
+              title="Fechar janela"
             >
               <X size={24} />
             </button>
@@ -573,16 +557,9 @@ export function PlaysReportModal({
             </button>
           </div>
         ) : (
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
+          <div className="plays-modal-scrollable">
             {/* Banner de Métricas Rápidas do Topo */}
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-              gap: '0.85rem',
-              padding: '1rem 1.75rem',
-              background: 'rgba(0, 0, 0, 0.25)',
-              borderBottom: '1px solid rgba(255, 255, 255, 0.05)'
-            }}>
+            <div className="plays-metrics-grid">
               {/* Total de Partidas */}
               <div style={{
                 background: 'rgba(16, 185, 129, 0.08)',
@@ -593,11 +570,11 @@ export function PlaysReportModal({
                 <div style={{ fontSize: '0.74rem', color: '#6ee7b7', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <Dices size={14} /> Total de Partidas
                 </div>
-                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#10b981', marginTop: '2px' }}>
+                <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#10b981', marginTop: '2px' }}>
                   {calculatedStats.totalPartidasCount}
                 </div>
                 <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                  {summary?.qt_partidas ? `${summary.qt_partidas} registradas no site` : `${filteredMatches.length} registros`}
+                  {summary?.qt_partidas ? `${summary.qt_partidas} registradas` : `${filteredMatches.length} registros`}
                 </div>
               </div>
 
@@ -609,13 +586,13 @@ export function PlaysReportModal({
                 padding: '0.65rem 0.9rem'
               }}>
                 <div style={{ fontSize: '0.74rem', color: '#7dd3fc', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <Clock size={14} /> Tempo Total Jogado
+                  <Clock size={14} /> Tempo Total
                 </div>
-                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#38bdf8', marginTop: '2px' }}>
+                <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#38bdf8', marginTop: '2px' }}>
                   {formatPlayDuration(calculatedStats.totalMinutes)}
                 </div>
                 <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                  {calculatedStats.avgMinutes > 0 ? `Média: ${calculatedStats.avgMinutes} min / partida` : 'Sem durações cadastradas'}
+                  {calculatedStats.avgMinutes > 0 ? `Média: ${calculatedStats.avgMinutes} min/partida` : 'Sem durações'}
                 </div>
               </div>
 
@@ -629,11 +606,11 @@ export function PlaysReportModal({
                 <div style={{ fontSize: '0.74rem', color: '#c4b5fd', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <Sparkles size={14} /> Jogos Únicos
                 </div>
-                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#8b5cf6', marginTop: '2px' }}>
+                <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#8b5cf6', marginTop: '2px' }}>
                   {calculatedStats.uniqueGamesCount}
                 </div>
                 <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                  Títulos distintos jogados
+                  Títulos distintos
                 </div>
               </div>
 
@@ -645,14 +622,14 @@ export function PlaysReportModal({
                 padding: '0.65rem 0.9rem'
               }}>
                 <div style={{ fontSize: '0.74rem', color: '#fcd34d', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <Trophy size={14} /> Vitórias Registradas
+                  <Trophy size={14} /> Vitórias
                 </div>
-                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#f59e0b', marginTop: '2px' }}>
+                <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#f59e0b', marginTop: '2px' }}>
                   {summary?.qt_vitorias !== undefined ? summary.qt_vitorias : calculatedStats.totalWins}
                 </div>
                 <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
                   {calculatedStats.totalPartidasCount > 0 
-                    ? `${Math.round(((summary?.qt_vitorias || calculatedStats.totalWins) / calculatedStats.totalPartidasCount) * 100)}% de taxa`
+                    ? `${Math.round(((summary?.qt_vitorias || calculatedStats.totalWins) / calculatedStats.totalPartidasCount) * 100)}% vitórias`
                     : '0% vitórias'}
                 </div>
               </div>
@@ -668,24 +645,17 @@ export function PlaysReportModal({
                   <Home size={14} /> Presencial vs Digital
                 </div>
                 <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#ec4899', marginTop: '4px' }}>
-                  {calculatedStats.presencialCount} <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 500 }}>mesa</span> / {calculatedStats.digitalCount} <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 500 }}>online</span>
+                  {calculatedStats.presencialCount} <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 500 }}>mesa</span> / {calculatedStats.digitalCount} <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 500 }}>online</span>
                 </div>
                 <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                  {calculatedStats.uniquePlayersCount} participantes distintos
+                  {calculatedStats.uniquePlayersCount} jogadores distintos
                 </div>
               </div>
             </div>
 
             {/* Alternador de Abas */}
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: '0.65rem 1.75rem',
-              borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-              background: 'rgba(15, 23, 42, 0.7)'
-            }}>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <div className="plays-tabs-bar">
+              <div className="tabs-buttons" style={{ display: 'flex', gap: '0.5rem' }}>
                 <button
                   type="button"
                   onClick={() => setActiveTab('matches')}
@@ -728,118 +698,145 @@ export function PlaysReportModal({
                 </button>
               </div>
 
-              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+              <div className="tab-counter" style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
                 Mostrando <strong>{filteredMatches.length}</strong> de <strong>{matches.length}</strong> partidas
               </div>
             </div>
 
             {/* Barra de Filtros e Busca */}
-            <div style={{
-              padding: '0.85rem 1.75rem',
-              background: 'rgba(30, 41, 59, 0.4)',
-              borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: '0.65rem',
-              alignItems: 'center'
-            }}>
-              {/* Input de Busca */}
-              <div style={{ position: 'relative', flex: '1 1 220px', minWidth: '180px' }}>
-                <Search size={15} color="var(--text-muted)" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
-                <input
-                  type="text"
-                  className="search-input"
-                  placeholder="Buscar por jogo, jogador ou nota..."
-                  value={searchTerm}
-                  onChange={e => setSearchTerm(e.target.value)}
-                  style={{ paddingLeft: '2.2rem', paddingRight: '0.75rem', width: '100%', fontSize: '0.82rem', height: '34px' }}
-                />
-              </div>
+            <div className="plays-filters-bar">
+              <div className="plays-mobile-search-row" style={{ display: 'flex', gap: '0.5rem', width: '100%', alignItems: 'center' }}>
+                {/* Input de Busca */}
+                <div className="search-wrapper" style={{ position: 'relative', flex: '1 1 200px', minWidth: '160px' }}>
+                  <Search size={15} color="var(--text-muted)" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
+                  <input
+                    type="text"
+                    className="search-input"
+                    placeholder="Buscar jogo, jogador ou nota..."
+                    value={searchTerm}
+                    onChange={e => setSearchTerm(e.target.value)}
+                    style={{ paddingLeft: '2.2rem', paddingRight: '0.75rem', width: '100%', fontSize: '0.82rem', height: '34px' }}
+                  />
+                </div>
 
-              {/* Filtro por Jogo */}
-              <select
-                className="search-input"
-                style={{ minWidth: '160px', height: '34px', fontSize: '0.82rem' }}
-                value={selectedGameId}
-                onChange={e => setSelectedGameId(e.target.value)}
-              >
-                <option value="todos">Todos os Jogos ({availableGames.length})</option>
-                {availableGames.map(g => (
-                  <option key={g.id} value={g.id}>{g.name}</option>
-                ))}
-              </select>
-
-              {/* Filtro por Jogador */}
-              <select
-                className="search-input"
-                style={{ minWidth: '140px', height: '34px', fontSize: '0.82rem' }}
-                value={selectedPlayer}
-                onChange={e => setSelectedPlayer(e.target.value)}
-              >
-                <option value="todos">Todos os Jogadores ({availablePlayers.length})</option>
-                {availablePlayers.map(p => (
-                  <option key={p} value={p}>{p}</option>
-                ))}
-              </select>
-
-              {/* Filtro Modalidade */}
-              <select
-                className="search-input"
-                style={{ minWidth: '120px', height: '34px', fontSize: '0.82rem' }}
-                value={typeFilter}
-                onChange={e => setTypeFilter(e.target.value as any)}
-              >
-                <option value="todos">Mesa & Online</option>
-                <option value="presencial">🏠 Presencial</option>
-                <option value="digital">💻 Digital</option>
-              </select>
-
-              {/* Filtro de Vitórias */}
-              <select
-                className="search-input"
-                style={{ minWidth: '120px', height: '34px', fontSize: '0.82rem' }}
-                value={victoryFilter}
-                onChange={e => setVictoryFilter(e.target.value as any)}
-              >
-                <option value="todos">Todos Resultados</option>
-                <option value="vitorias">🏆 Com Vencedor</option>
-              </select>
-
-              {/* Ordenação */}
-              <select
-                className="search-input"
-                style={{ minWidth: '140px', height: '34px', fontSize: '0.82rem' }}
-                value={sortBy}
-                onChange={e => setSortBy(e.target.value as any)}
-              >
-                <option value="date_desc">Mais Recentes</option>
-                <option value="date_asc">Mais Antigas</option>
-                <option value="duration_desc">Maior Duração</option>
-                <option value="game_name">Nome do Jogo (A-Z)</option>
-              </select>
-
-              {(searchTerm || selectedGameId !== 'todos' || selectedPlayer !== 'todos' || typeFilter !== 'todos' || victoryFilter !== 'todos' || dateStart || dateEnd) && (
+                {/* Botão de Toggle de Filtros no Mobile */}
                 <button
                   type="button"
-                  className="btn"
-                  onClick={() => {
-                    setSearchTerm('');
-                    setSelectedGameId('todos');
-                    setSelectedPlayer('todos');
-                    setTypeFilter('todos');
-                    setVictoryFilter('todos');
-                    setDateStart('');
-                    setDateEnd('');
+                  className="btn plays-mobile-filters-toggle"
+                  onClick={() => setIsMobileFiltersOpen(prev => !prev)}
+                  style={{
+                    background: isMobileFiltersOpen || activeFiltersCount > 0 ? 'var(--accent)' : 'rgba(255,255,255,0.08)',
+                    color: '#fff',
+                    borderColor: isMobileFiltersOpen || activeFiltersCount > 0 ? 'var(--accent)' : 'rgba(255,255,255,0.15)'
                   }}
-                  style={{ padding: '0.35rem 0.65rem', fontSize: '0.78rem', color: '#f87171' }}
                 >
-                  Limpar Filtros
+                  <Filter size={13} />
+                  <span>{isMobileFiltersOpen ? 'Fechar' : 'Filtros'}</span>
+                  {activeFiltersCount > 0 && (
+                    <span style={{
+                      background: '#fff',
+                      color: '#0f172a',
+                      borderRadius: '10px',
+                      padding: '1px 5px',
+                      fontSize: '0.68rem',
+                      fontWeight: 700
+                    }}>
+                      {activeFiltersCount}
+                    </span>
+                  )}
                 </button>
-              )}
+              </div>
+
+              {/* Dropdowns de Filtro */}
+              <div
+                className="plays-filters-dropdowns"
+                style={{ display: isMobileFiltersOpen ? 'flex' : undefined }}
+              >
+                {/* Filtro por Jogo */}
+                <select
+                  className="search-input"
+                  style={{ minWidth: '150px', height: '34px', fontSize: '0.82rem' }}
+                  value={selectedGameId}
+                  onChange={e => setSelectedGameId(e.target.value)}
+                >
+                  <option value="todos">Todos os Jogos ({availableGames.length})</option>
+                  {availableGames.map(g => (
+                    <option key={g.id} value={g.id}>{g.name}</option>
+                  ))}
+                </select>
+
+                {/* Filtro por Jogador */}
+                <select
+                  className="search-input"
+                  style={{ minWidth: '135px', height: '34px', fontSize: '0.82rem' }}
+                  value={selectedPlayer}
+                  onChange={e => setSelectedPlayer(e.target.value)}
+                >
+                  <option value="todos">Todos os Jogadores ({availablePlayers.length})</option>
+                  {availablePlayers.map(p => (
+                    <option key={p} value={p}>{p}</option>
+                  ))}
+                </select>
+
+                {/* Filtro Modalidade */}
+                <select
+                  className="search-input"
+                  style={{ minWidth: '120px', height: '34px', fontSize: '0.82rem' }}
+                  value={typeFilter}
+                  onChange={e => setTypeFilter(e.target.value as any)}
+                >
+                  <option value="todos">Mesa & Online</option>
+                  <option value="presencial">🏠 Presencial</option>
+                  <option value="digital">💻 Digital</option>
+                </select>
+
+                {/* Filtro de Vitórias */}
+                <select
+                  className="search-input"
+                  style={{ minWidth: '120px', height: '34px', fontSize: '0.82rem' }}
+                  value={victoryFilter}
+                  onChange={e => setVictoryFilter(e.target.value as any)}
+                >
+                  <option value="todos">Todos Resultados</option>
+                  <option value="vitorias">🏆 Com Vencedor</option>
+                </select>
+
+                {/* Ordenação */}
+                <select
+                  className="search-input"
+                  style={{ minWidth: '135px', height: '34px', fontSize: '0.82rem' }}
+                  value={sortBy}
+                  onChange={e => setSortBy(e.target.value as any)}
+                >
+                  <option value="date_desc">Mais Recentes</option>
+                  <option value="date_asc">Mais Antigas</option>
+                  <option value="duration_desc">Maior Duração</option>
+                  <option value="game_name">Nome do Jogo (A-Z)</option>
+                </select>
+
+                {(searchTerm || selectedGameId !== 'todos' || selectedPlayer !== 'todos' || typeFilter !== 'todos' || victoryFilter !== 'todos' || dateStart || dateEnd) && (
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => {
+                      setSearchTerm('');
+                      setSelectedGameId('todos');
+                      setSelectedPlayer('todos');
+                      setTypeFilter('todos');
+                      setVictoryFilter('todos');
+                      setDateStart('');
+                      setDateEnd('');
+                    }}
+                    style={{ padding: '0.35rem 0.65rem', fontSize: '0.78rem', color: '#f87171' }}
+                  >
+                    Limpar Filtros
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Conteúdo com Scroll */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: '1.25rem 1.75rem' }}>
+            <div className="plays-content-area">
               {activeTab === 'matches' ? (
                 filteredMatches.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: '4rem 1rem', color: 'var(--text-muted)' }}>
@@ -857,9 +854,8 @@ export function PlaysReportModal({
                       return (
                         <div
                           key={`match-${match.id_partida}`}
-                          className="glass-panel"
+                          className="glass-panel plays-match-card"
                           style={{
-                            padding: '1rem 1.25rem',
                             borderRadius: '12px',
                             background: 'rgba(30, 41, 59, 0.55)',
                             border: '1px solid rgba(255, 255, 255, 0.08)',
@@ -868,23 +864,23 @@ export function PlaysReportModal({
                           }}
                         >
                           {/* Linha Principal da Partida */}
-                          <div style={{
+                          <div className="card-main-row" style={{
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'space-between',
                             flexWrap: 'wrap',
-                            gap: '1rem'
+                            gap: '0.85rem'
                           }}>
                             {/* Bloco do Jogo: Thumb + Nome + Expansões */}
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', minWidth: '240px', flex: '1 1 300px' }}>
+                            <div className="card-game-info" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0, flex: '1 1 240px' }}>
                               {match.jogo?.thumb ? (
                                 <img
                                   src={match.jogo.thumb}
                                   alt={match.jogo.nm_jogo}
                                   loading="lazy"
                                   style={{
-                                    width: '54px',
-                                    height: '54px',
+                                    width: '48px',
+                                    height: '48px',
                                     objectFit: 'cover',
                                     borderRadius: '8px',
                                     border: '1px solid rgba(255, 255, 255, 0.1)',
@@ -893,8 +889,8 @@ export function PlaysReportModal({
                                 />
                               ) : (
                                 <div style={{
-                                  width: '54px',
-                                  height: '54px',
+                                  width: '48px',
+                                  height: '48px',
                                   borderRadius: '8px',
                                   background: 'rgba(255, 255, 255, 0.05)',
                                   display: 'flex',
@@ -902,13 +898,13 @@ export function PlaysReportModal({
                                   justifyContent: 'center',
                                   flexShrink: 0
                                 }}>
-                                  <Dices size={24} color="var(--text-muted)" />
+                                  <Dices size={22} color="var(--text-muted)" />
                                 </div>
                               )}
 
-                              <div>
+                              <div style={{ minWidth: 0, flex: 1 }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                                  <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: '#fff' }}>
+                                  <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#fff', wordBreak: 'break-word' }}>
                                     {match.jogo?.nm_jogo || 'Jogo Desconhecido'}
                                   </h4>
                                   {match.jogo?.link && (
@@ -924,10 +920,10 @@ export function PlaysReportModal({
                                   )}
                                   {match.qt_partidas > 1 && (
                                     <span style={{
-                                      fontSize: '0.72rem',
+                                      fontSize: '0.7rem',
                                       fontWeight: 600,
-                                      padding: '1px 6px',
-                                      borderRadius: '6px',
+                                      padding: '1px 5px',
+                                      borderRadius: '5px',
                                       background: 'rgba(99, 102, 241, 0.2)',
                                       color: '#a5b4fc',
                                       border: '1px solid rgba(99, 102, 241, 0.35)'
@@ -943,9 +939,9 @@ export function PlaysReportModal({
                                       <span
                                         key={`exp-${exp.id_jogo}`}
                                         style={{
-                                          fontSize: '0.7rem',
+                                          fontSize: '0.68rem',
                                           fontWeight: 500,
-                                          padding: '1px 6px',
+                                          padding: '1px 5px',
                                           borderRadius: '4px',
                                           background: 'rgba(139, 92, 246, 0.15)',
                                           color: '#c4b5fd',
@@ -961,19 +957,19 @@ export function PlaysReportModal({
                             </div>
 
                             {/* Badges de Metadados: Data, Duração, Modalidade e Grupo */}
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                            <div className="card-meta-badges" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                               {/* Data */}
                               <span style={{
                                 display: 'inline-flex',
                                 alignItems: 'center',
-                                gap: '4px',
-                                fontSize: '0.8rem',
+                                gap: '3px',
+                                fontSize: '0.76rem',
                                 color: '#e2e8f0',
                                 background: 'rgba(255, 255, 255, 0.06)',
-                                padding: '4px 8px',
+                                padding: '3px 7px',
                                 borderRadius: '6px'
                               }}>
-                                <Calendar size={13} color="#94a3b8" />
+                                <Calendar size={12} color="#94a3b8" />
                                 {formatMatchDate(match.dt_partida)}
                               </span>
 
@@ -981,15 +977,15 @@ export function PlaysReportModal({
                               <span style={{
                                 display: 'inline-flex',
                                 alignItems: 'center',
-                                gap: '4px',
-                                fontSize: '0.8rem',
+                                gap: '3px',
+                                fontSize: '0.76rem',
                                 color: match.duracao ? '#38bdf8' : '#94a3b8',
                                 background: match.duracao ? 'rgba(56, 189, 248, 0.12)' : 'rgba(255, 255, 255, 0.04)',
                                 border: `1px solid ${match.duracao ? 'rgba(56, 189, 248, 0.25)' : 'transparent'}`,
-                                padding: '4px 8px',
+                                padding: '3px 7px',
                                 borderRadius: '6px'
                               }}>
-                                <Clock size={13} />
+                                <Clock size={12} />
                                 {formatPlayDuration(match.duracao)}
                               </span>
 
@@ -997,25 +993,25 @@ export function PlaysReportModal({
                               <span style={{
                                 display: 'inline-flex',
                                 alignItems: 'center',
-                                gap: '4px',
-                                fontSize: '0.78rem',
+                                gap: '3px',
+                                fontSize: '0.76rem',
                                 color: match.fl_digital === 1 ? '#ec4899' : '#10b981',
                                 background: match.fl_digital === 1 ? 'rgba(236, 72, 153, 0.12)' : 'rgba(16, 185, 129, 0.12)',
                                 border: `1px solid ${match.fl_digital === 1 ? 'rgba(236, 72, 153, 0.25)' : 'rgba(16, 185, 129, 0.25)'}`,
-                                padding: '4px 8px',
+                                padding: '3px 7px',
                                 borderRadius: '6px'
                               }}>
-                                {match.fl_digital === 1 ? <Monitor size={12} /> : <Home size={12} />}
+                                {match.fl_digital === 1 ? <Monitor size={11} /> : <Home size={11} />}
                                 {match.fl_digital === 1 ? 'Digital' : 'Presencial'}
                               </span>
 
                               {/* Grupo */}
                               {match.grupo?.nm_grupo && (
                                 <span style={{
-                                  fontSize: '0.78rem',
+                                  fontSize: '0.76rem',
                                   color: '#e2e8f0',
                                   background: 'rgba(255, 255, 255, 0.05)',
-                                  padding: '4px 8px',
+                                  padding: '3px 7px',
                                   borderRadius: '6px'
                                 }}>
                                   🏷️ {match.grupo.nm_grupo}
@@ -1028,16 +1024,16 @@ export function PlaysReportModal({
                                 onClick={() => setExpandedMatchId(isExpanded ? null : match.id_partida)}
                                 className="btn"
                                 style={{
-                                  padding: '0.35rem 0.65rem',
-                                  fontSize: '0.78rem',
+                                  padding: '0.3rem 0.6rem',
+                                  fontSize: '0.76rem',
                                   display: 'flex',
                                   alignItems: 'center',
                                   gap: '4px'
                                 }}
                               >
-                                <Users size={13} />
+                                <Users size={12} />
                                 {playersCount} {playersCount === 1 ? 'jogador' : 'jogadores'}
-                                {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
                               </button>
                             </div>
                           </div>
@@ -1081,14 +1077,15 @@ export function PlaysReportModal({
 
                                 <div style={{
                                   display: 'grid',
-                                  gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-                                  gap: '0.65rem'
+                                  gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 200px), 1fr))',
+                                  gap: '0.5rem'
                                 }}>
                                   {match.jogadores?.map(jogador => {
                                     const isWinner = jogador.fl_vencedor === 1 || jogador.fl_vencedor === ('1' as any);
                                     return (
                                       <div
                                         key={`jog-${match.id_partida}-${jogador.id_partida_jogador}-${jogador.nome}`}
+                                        className="plays-player-row"
                                         style={{
                                           display: 'flex',
                                           alignItems: 'center',
@@ -1170,11 +1167,32 @@ export function PlaysReportModal({
                         </div>
                       );
                     })}
+                    {filteredMatches.length > 3 && (
+                      <div style={{ textAlign: 'center', padding: '1.25rem 0 0.5rem', display: 'flex', justifyContent: 'center' }}>
+                        <button
+                          type="button"
+                          onClick={onClose}
+                          className="btn"
+                          style={{
+                            padding: '0.5rem 1.25rem',
+                            fontSize: '0.85rem',
+                            borderRadius: '20px',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            background: 'rgba(255, 255, 255, 0.08)',
+                            borderColor: 'rgba(255, 255, 255, 0.2)'
+                          }}
+                        >
+                          <X size={15} /> Fechar Relatório
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )
               ) : (
                 /* Aba de Rankings & Gráficos */
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: '1.5rem' }}>
+                <div className="plays-charts-grid">
                   {/* Top 10 Jogos Mais Jogados */}
                   <div className="glass-panel" style={{ padding: '1.25rem', background: 'rgba(255, 255, 255, 0.02)' }}>
                     <h3 style={{ fontSize: '1.1rem', marginBottom: '1rem', color: '#f8fafc', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1183,10 +1201,10 @@ export function PlaysReportModal({
                     </h3>
                     <div style={{ width: '100%', height: 320 }}>
                       <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={calculatedStats.topGames} layout="vertical" margin={{ top: 10, right: 30, left: 100, bottom: 5 }}>
+                        <BarChart data={calculatedStats.topGames} layout="vertical" margin={{ top: 10, right: 20, left: 10, bottom: 5 }}>
                           <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" horizontal={true} vertical={false} />
                           <XAxis type="number" stroke="rgba(255,255,255,0.5)" allowDecimals={false} />
-                          <YAxis dataKey="name" type="category" stroke="rgba(255,255,255,0.8)" width={120} tick={{ fontSize: 11 }} />
+                          <YAxis dataKey="name" type="category" stroke="rgba(255,255,255,0.8)" width={95} tick={{ fontSize: 10 }} />
                           <Tooltip
                             formatter={(value: any, _name: any, item: any) => [
                               `${value} partida(s) • ${formatPlayDuration(item.payload.minutes)}`,
@@ -1208,7 +1226,7 @@ export function PlaysReportModal({
                     </h3>
                     <div style={{ width: '100%', height: 320 }}>
                       <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={calculatedStats.dayData} margin={{ top: 10, right: 20, left: 0, bottom: 20 }}>
+                        <BarChart data={calculatedStats.dayData} margin={{ top: 10, right: 15, left: -15, bottom: 20 }}>
                           <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" vertical={false} />
                           <XAxis dataKey="day" stroke="rgba(255,255,255,0.6)" tick={{ fontSize: 12 }} />
                           <YAxis stroke="rgba(255,255,255,0.6)" allowDecimals={false} />
@@ -1230,7 +1248,7 @@ export function PlaysReportModal({
                     </h3>
                     <div style={{
                       display: 'grid',
-                      gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
+                      gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 220px), 1fr))',
                       gap: '0.85rem'
                     }}>
                       {calculatedStats.topPlayers.map((player, idx) => {
@@ -1284,6 +1302,26 @@ export function PlaysReportModal({
                         );
                       })}
                     </div>
+                  </div>
+
+                  <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '1rem 0 0.5rem', display: 'flex', justifyContent: 'center' }}>
+                    <button
+                      type="button"
+                      onClick={onClose}
+                      className="btn"
+                      style={{
+                        padding: '0.5rem 1.25rem',
+                        fontSize: '0.85rem',
+                        borderRadius: '20px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        background: 'rgba(255, 255, 255, 0.08)',
+                        borderColor: 'rgba(255, 255, 255, 0.2)'
+                      }}
+                    >
+                      <X size={15} /> Fechar Relatório
+                    </button>
                   </div>
                 </div>
               )}
