@@ -79,8 +79,13 @@ export function AddGameModal({ isOpen, onClose, onAdd, ludoToken, bggToken }: Ad
         if (d.suggestedPlayers) setSuggestedPlayers(d.suggestedPlayers);
       }
 
+      const bggRankFromRes = bggRes.status === 'fulfilled' ? bggRes.value?.rank : undefined;
+
       if (comparaRes.status === 'fulfilled' && comparaRes.value) {
         const p = comparaRes.value;
+        if (!bggRankFromRes && p.bggRank) {
+          setRank(p.bggRank);
+        }
         if (p.retailPrice) {
           setRetailPrice(p.retailPrice);
           setValue(String(p.retailPrice));

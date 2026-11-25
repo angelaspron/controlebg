@@ -132,7 +132,7 @@ export async function updateSingleGameParallel(
     weight: (bggData?.weight !== undefined) 
       ? Math.round(bggData.weight * 100) / 100 
       : (game.weight !== undefined ? Math.round(Number(game.weight) * 100) / 100 : undefined),
-    rank: bggData?.rank || ludoData?.rank || game.rank,
+    rank: bggData?.rank || comparaData?.bggRank || ludoData?.rank || game.rank,
     domains: mergedDomains.length > 0 ? mergedDomains : game.domains,
     mechanics: bggData?.mechanics || game.mechanics,
     honors: bggData?.honors || game.honors,

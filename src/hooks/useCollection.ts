@@ -420,28 +420,35 @@ export function useCollection(user?: User | null) {
 
           if (bggId) {
             const bggData = await fetchBGGThingWithRetry(bggId, { token: bggToken });
-            if (bggData) {
+            let fallbackRank: number | undefined;
+            if (!bggData?.rank) {
+              const comparaData = await fetchComparaJogosData(game.name, bggId);
+              fallbackRank = comparaData?.bggRank;
+            }
+            if (bggData || fallbackRank) {
               setGames(prev => prev.map(g => {
                 if (g.id !== game.id) return g;
                 return {
                   ...g,
                   bggId,
-                  thumbnail: bggData.thumbnail || g.thumbnail,
-                  image: bggData.image || g.image,
-                  minPlayers: bggData.minPlayers || g.minPlayers,
-                  maxPlayers: bggData.maxPlayers || g.maxPlayers,
-                  yearPublished: bggData.yearPublished || g.yearPublished,
-                  rating: bggData.rating || g.rating,
-                  geekRating: bggData.geekRating || g.geekRating,
-                  weight: bggData.weight !== undefined 
-                    ? Math.round(bggData.weight * 100) / 100 
-                    : (g.weight !== undefined ? Math.round(Number(g.weight) * 100) / 100 : undefined),
-                  rank: bggData.rank || g.rank,
-                  domains: bggData.domains || g.domains,
-                  mechanics: bggData.mechanics || g.mechanics,
-                  honors: bggData.honors || g.honors,
-                  suggestedPlayers: bggData.suggestedPlayers || g.suggestedPlayers,
-                  description: bggData.description || g.description,
+                  ...(bggData ? {
+                    thumbnail: bggData.thumbnail || g.thumbnail,
+                    image: bggData.image || g.image,
+                    minPlayers: bggData.minPlayers || g.minPlayers,
+                    maxPlayers: bggData.maxPlayers || g.maxPlayers,
+                    yearPublished: bggData.yearPublished || g.yearPublished,
+                    rating: bggData.rating || g.rating,
+                    geekRating: bggData.geekRating || g.geekRating,
+                    weight: bggData.weight !== undefined 
+                      ? Math.round(bggData.weight * 100) / 100 
+                      : (g.weight !== undefined ? Math.round(Number(g.weight) * 100) / 100 : undefined),
+                    domains: bggData.domains || g.domains,
+                    mechanics: bggData.mechanics || g.mechanics,
+                    honors: bggData.honors || g.honors,
+                    suggestedPlayers: bggData.suggestedPlayers || g.suggestedPlayers,
+                    description: bggData.description || g.description,
+                  } : {}),
+                  rank: bggData?.rank || fallbackRank || g.rank,
                 };
               }));
             }
@@ -610,6 +617,7 @@ export function useCollection(user?: User | null) {
                 retailPrice: priceData.retailPrice || g.retailPrice,
                 usedPrice: priceData.usedPrice || g.usedPrice,
                 cardSleeves: priceData.cardSleeves?.sets?.length ? priceData.cardSleeves : g.cardSleeves,
+                rank: g.rank || priceData.bggRank,
                 value: marketValue,
               };
             }));

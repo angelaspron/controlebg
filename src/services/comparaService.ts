@@ -6,6 +6,7 @@ export interface ComparaPriceData {
   usedPrice?: number; // Estimativa de mercado de usados
   cardSleeves?: CardSleevesData; // Informações de sleeves necessárias para o jogo
   bggId?: string;
+  bggRank?: number;
   comparaId?: number;
 }
 
@@ -92,6 +93,10 @@ export function parseComparaPrices(product: any): ComparaPriceData {
   } : undefined;
 
   const bggId = product.bgg_id ? String(product.bgg_id) : undefined;
+  const parsedRank = product.bgg_ranking !== null && product.bgg_ranking !== undefined
+    ? parseInt(String(product.bgg_ranking), 10)
+    : NaN;
+  const bggRank = !isNaN(parsedRank) && parsedRank > 0 ? parsedRank : undefined;
   const comparaId = product.id ? Number(product.id) : undefined;
 
   return {
@@ -99,6 +104,7 @@ export function parseComparaPrices(product: any): ComparaPriceData {
     usedPrice,
     cardSleeves,
     bggId,
+    bggRank,
     comparaId,
   };
 }
@@ -121,6 +127,7 @@ export async function fetchComparaJogosData(
         name
         slug
         bgg_id
+        bgg_ranking
         product_price { min_price }
         sleeves {
           id
@@ -146,6 +153,7 @@ export async function fetchComparaJogosData(
         name
         slug
         bgg_id
+        bgg_ranking
         product_price { min_price }
         sleeves {
           id
@@ -171,6 +179,7 @@ export async function fetchComparaJogosData(
         name
         slug
         bgg_id
+        bgg_ranking
         product_price { min_price }
         sleeves {
           id
@@ -196,6 +205,7 @@ export async function fetchComparaJogosData(
         name
         slug
         bgg_id
+        bgg_ranking
         product_price { min_price }
         sleeves {
           id

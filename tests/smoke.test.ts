@@ -115,6 +115,8 @@ export async function runSmokeTests(logger: (msg: string) => void): Promise<{ pa
     const mockComparaProduct = {
       id: 999,
       name: "Wingspan",
+      bgg_id: 266192,
+      bgg_ranking: 26,
       prices: [
         { name: "Wingspan - Jogo Lacrado", price_to: 350.00, available: true, store: { name: "Bravo Jogos" } },
         { name: "Wingspan - Usado Estado Excelente", price_to: 270.00, available: true, store: { name: "Classificados BGG" } },
@@ -127,6 +129,7 @@ export async function runSmokeTests(logger: (msg: string) => void): Promise<{ pa
     const prices = parseComparaPrices(mockComparaProduct);
     assert.equal(prices.retailPrice, 350.00, 'Menor preço de varejo deve ser 350.00');
     assert.equal(prices.usedPrice, 270.00, 'Estimativa de usados deve ser 270.00');
+    assert.equal(prices.bggRank, 26, 'Ranking BGG extraído do Compara Jogos deve ser 26');
   });
 
   // Smoke 4: Modal Data Contract
