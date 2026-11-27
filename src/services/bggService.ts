@@ -18,12 +18,16 @@ export interface BGGParsedData {
   minPlayers?: number;
   maxPlayers?: number;
   yearPublished?: number;
+  playtime?: number;
   rating?: number; // Average
   geekRating?: number; // Bayes Average
   weight?: number; // 1-5
   rank?: number;
   domains?: string[]; // Categories + Mechanics
   mechanics?: string[];
+  categories?: string[];
+  designers?: string[];
+  artists?: string[];
   honors?: string[]; // boardgamehonor
   suggestedPlayers?: {
     best: string[];
@@ -34,183 +38,210 @@ export interface BGGParsedData {
   cardSleeves?: CardSleevesData;
 }
 
+function parseBGGItemNode(item: any): BGGParsedData | null {
+  if (!item || !item['@_id']) return null;
+
+  const bggId = String(item['@_id']);
+
+  // Nome principal
+  let primaryName: string | undefined;
+  if (item.name) {
+    if (Array.isArray(item.name)) {
+      const primary = item.name.find((n: any) => n['@_type'] === 'primary');
+      primaryName = primary ? primary['@_value'] : item.name[0]?.['@_value'];
+    } else {
+      primaryName = item.name['@_value'] || item.name['#text'];
+    }
+  }
+
+  // Rank BGG
+  let bggRank: number | undefined;
+  const ranksObj = item.statistics?.ratings?.ranks?.rank;
+  if (ranksObj) {
+    const bgRankItem = Array.isArray(ranksObj)
+      ? ranksObj.find((r: any) => r['@_name'] === 'boardgame')
+      : ranksObj;
+    if (bgRankItem && bgRankItem['@_value'] && bgRankItem['@_value'] !== 'Not Ranked') {
+      const parsed = parseInt(bgRankItem['@_value'], 10);
+      if (!isNaN(parsed)) bggRank = parsed;
+    }
+  }
+
+  let isExpansion = false;
+  let bggType = 'Base';
+
+  if (item['@_type'] === 'boardgameexpansion') {
+    isExpansion = true;
+    bggType = 'Expansão';
+  }
+
+  // Links: mecânicas, categorias, designers, artistas, honors (prêmios)
+  const links = Array.isArray(item.link) ? item.link : item.link ? [item.link] : [];
+
+  const mechanics: string[] = [];
+  const categories: string[] = [];
+  const designers: string[] = [];
+  const artists: string[] = [];
+  const honors: string[] = [];
+
+  for (const link of links) {
+    const type = link['@_type'];
+    const value = link['@_value'];
+
+    if (type === 'boardgameexpansion' && (link['@_inbound'] === 'true' || link['@_inbound'] === true)) {
+      isExpansion = true;
+      bggType = 'Expansão';
+    }
+
+    if (!value) continue;
+
+    if (type === 'boardgamemechanic') {
+      mechanics.push(value);
+    } else if (type === 'boardgamecategory') {
+      categories.push(value);
+    } else if (type === 'boardgamedesigner') {
+      if (value !== '(Uncredited)') designers.push(value);
+    } else if (type === 'boardgameartist') {
+      if (value !== '(Uncredited)') artists.push(value);
+    } else if (type === 'boardgamehonor') {
+      honors.push(value);
+    }
+  }
+
+  const domains = [...categories, ...mechanics];
+
+  // Ratings
+  const ratings = item.statistics?.ratings;
+  const rating = ratings?.average?.['@_value'] ? parseFloat(ratings.average['@_value']) : undefined;
+  const geekRating = ratings?.bayesaverage?.['@_value'] ? parseFloat(ratings.bayesaverage['@_value']) : undefined;
+  const rawWeight = ratings?.averageweight?.['@_value'] ? parseFloat(ratings.averageweight['@_value']) : undefined;
+  const weight = (rawWeight !== undefined && !isNaN(rawWeight)) ? Math.round(rawWeight * 100) / 100 : undefined;
+
+  // Jogadores, Tempo e Ano
+  const minPlayers = item.minplayers?.['@_value'] ? parseInt(item.minplayers['@_value'], 10) : undefined;
+  const maxPlayers = item.maxplayers?.['@_value'] ? parseInt(item.maxplayers['@_value'], 10) : undefined;
+  const yearPublished = item.yearpublished?.['@_value'] ? parseInt(item.yearpublished['@_value'], 10) : undefined;
+  const playtime = item.playingtime?.['@_value'] ? parseInt(item.playingtime['@_value'], 10) : undefined;
+
+  // Poll: suggested_numplayers
+  let suggestedPlayers: { best: string[]; recommended: string[]; summary: string } | undefined;
+  const polls = Array.isArray(item.poll) ? item.poll : item.poll ? [item.poll] : [];
+  const numPlayersPoll = polls.find((p: any) => p['@_name'] === 'suggested_numplayers');
+
+  if (numPlayersPoll && numPlayersPoll.results) {
+    const pollResults = Array.isArray(numPlayersPoll.results) ? numPlayersPoll.results : [numPlayersPoll.results];
+    const bestCounts: { players: string; bestVotes: number; recVotes: number; notRecVotes: number }[] = [];
+
+    for (const resNode of pollResults) {
+      const numPlayersStr = resNode['@_numplayers'];
+      const resList = Array.isArray(resNode.result) ? resNode.result : resNode.result ? [resNode.result] : [];
+
+      let bestVotes = 0;
+      let recVotes = 0;
+      let notRecVotes = 0;
+
+      for (const r of resList) {
+        const val = r['@_value'];
+        const votes = parseInt(r['@_numvotes'] || '0', 10);
+        if (val === 'Best') bestVotes = votes;
+        else if (val === 'Recommended') recVotes = votes;
+        else if (val === 'Not Recommended') notRecVotes = votes;
+      }
+
+      if (numPlayersStr) {
+        bestCounts.push({ players: numPlayersStr, bestVotes, recVotes, notRecVotes });
+      }
+    }
+
+    if (bestCounts.length > 0) {
+      const maxBest = Math.max(...bestCounts.map(b => b.bestVotes));
+      const bestPlayers = maxBest > 0
+        ? bestCounts.filter(b => b.bestVotes === maxBest && b.bestVotes >= b.notRecVotes).map(b => b.players)
+        : [];
+
+      const recommendedPlayers = bestCounts
+        .filter(b => (b.bestVotes + b.recVotes) > b.notRecVotes && (b.bestVotes + b.recVotes) > 0)
+        .map(b => b.players);
+
+      let summary = '';
+      if (bestPlayers.length > 0) {
+        summary = `Ideal com ${bestPlayers.join(', ')} ${bestPlayers.length === 1 ? 'jogador' : 'jogadores'}`;
+      } else if (recommendedPlayers.length > 0) {
+        summary = `Recomendado para ${recommendedPlayers.join(', ')} jogadores`;
+      }
+
+      if (bestPlayers.length > 0 || recommendedPlayers.length > 0) {
+        suggestedPlayers = {
+          best: bestPlayers,
+          recommended: recommendedPlayers,
+          summary,
+        };
+      }
+    }
+  }
+
+  // Descrição limpa
+  let description: string | undefined;
+  if (item.description) {
+    description = String(item.description)
+      .replace(/&#10;/g, '\n')
+      .replace(/&quot;/g, '"')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&rsquo;/g, "'")
+      .replace(/&lsquo;/g, "'");
+  }
+
+  return {
+    bggId,
+    name: primaryName,
+    type: bggType,
+    isExpansion,
+    thumbnail: item.thumbnail,
+    image: item.image,
+    minPlayers: isNaN(minPlayers as number) ? undefined : minPlayers,
+    maxPlayers: isNaN(maxPlayers as number) ? undefined : maxPlayers,
+    yearPublished: isNaN(yearPublished as number) ? undefined : yearPublished,
+    playtime: playtime && !isNaN(playtime) ? playtime : undefined,
+    rating: isNaN(rating as number) ? undefined : rating,
+    geekRating: isNaN(geekRating as number) ? undefined : geekRating,
+    weight: isNaN(weight as number) ? undefined : weight,
+    rank: bggRank,
+    domains: domains.length > 0 ? domains : undefined,
+    mechanics: mechanics.length > 0 ? mechanics : undefined,
+    categories: categories.length > 0 ? categories : undefined,
+    designers: designers.length > 0 ? Array.from(new Set(designers)) : undefined,
+    artists: artists.length > 0 ? Array.from(new Set(artists)) : undefined,
+    honors: honors.length > 0 ? honors : undefined,
+    suggestedPlayers,
+    description,
+  };
+}
+
 export function parseBGGThingXml(xmlText: string): BGGParsedData | null {
   try {
     const obj = xmlParser.parse(xmlText);
     if (!obj?.items?.item) return null;
 
     const item = Array.isArray(obj.items.item) ? obj.items.item[0] : obj.items.item;
-    if (!item) return null;
-
-    const bggId = String(item['@_id']);
-
-    // Nome principal
-    let primaryName: string | undefined;
-    if (item.name) {
-      if (Array.isArray(item.name)) {
-        const primary = item.name.find((n: any) => n['@_type'] === 'primary');
-        primaryName = primary ? primary['@_value'] : item.name[0]?.['@_value'];
-      } else {
-        primaryName = item.name['@_value'] || item.name['#text'];
-      }
-    }
-
-    // Rank BGG
-    let bggRank: number | undefined;
-    const ranksObj = item.statistics?.ratings?.ranks?.rank;
-    if (ranksObj) {
-      const bgRankItem = Array.isArray(ranksObj)
-        ? ranksObj.find((r: any) => r['@_name'] === 'boardgame')
-        : ranksObj;
-      if (bgRankItem && bgRankItem['@_value'] && bgRankItem['@_value'] !== 'Not Ranked') {
-        const parsed = parseInt(bgRankItem['@_value'], 10);
-        if (!isNaN(parsed)) bggRank = parsed;
-      }
-    }
-
-    let isExpansion = false;
-    let bggType = 'Base';
-
-    if (item['@_type'] === 'boardgameexpansion') {
-      isExpansion = true;
-      bggType = 'Expansão';
-    }
-
-    // Links: mecânicas, categorias, honors (prêmios)
-    const links = Array.isArray(item.link) ? item.link : item.link ? [item.link] : [];
-    
-    const mechanics: string[] = [];
-    const categories: string[] = [];
-    const honors: string[] = [];
-
-    for (const link of links) {
-      const type = link['@_type'];
-      const value = link['@_value'];
-      
-      if (type === 'boardgameexpansion' && (link['@_inbound'] === 'true' || link['@_inbound'] === true)) {
-        isExpansion = true;
-        bggType = 'Expansão';
-      }
-
-      if (!value) continue;
-
-      if (type === 'boardgamemechanic') {
-        mechanics.push(value);
-      } else if (type === 'boardgamecategory') {
-        categories.push(value);
-      } else if (type === 'boardgamehonor') {
-        honors.push(value);
-      }
-    }
-
-    const domains = [...categories, ...mechanics];
-
-    // Ratings
-    const ratings = item.statistics?.ratings;
-    const rating = ratings?.average?.['@_value'] ? parseFloat(ratings.average['@_value']) : undefined;
-    const geekRating = ratings?.bayesaverage?.['@_value'] ? parseFloat(ratings.bayesaverage['@_value']) : undefined;
-    const rawWeight = ratings?.averageweight?.['@_value'] ? parseFloat(ratings.averageweight['@_value']) : undefined;
-    const weight = (rawWeight !== undefined && !isNaN(rawWeight)) ? Math.round(rawWeight * 100) / 100 : undefined;
-
-    // Jogadores e Ano
-    const minPlayers = item.minplayers?.['@_value'] ? parseInt(item.minplayers['@_value'], 10) : undefined;
-    const maxPlayers = item.maxplayers?.['@_value'] ? parseInt(item.maxplayers['@_value'], 10) : undefined;
-    const yearPublished = item.yearpublished?.['@_value'] ? parseInt(item.yearpublished['@_value'], 10) : undefined;
-
-    // Poll: suggested_numplayers
-    let suggestedPlayers: { best: string[]; recommended: string[]; summary: string } | undefined;
-    const polls = Array.isArray(item.poll) ? item.poll : item.poll ? [item.poll] : [];
-    const numPlayersPoll = polls.find((p: any) => p['@_name'] === 'suggested_numplayers');
-
-    if (numPlayersPoll && numPlayersPoll.results) {
-      const pollResults = Array.isArray(numPlayersPoll.results) ? numPlayersPoll.results : [numPlayersPoll.results];
-      const bestCounts: { players: string; bestVotes: number; recVotes: number; notRecVotes: number }[] = [];
-
-      for (const resNode of pollResults) {
-        const numPlayersStr = resNode['@_numplayers'];
-        const resList = Array.isArray(resNode.result) ? resNode.result : resNode.result ? [resNode.result] : [];
-        
-        let bestVotes = 0;
-        let recVotes = 0;
-        let notRecVotes = 0;
-
-        for (const r of resList) {
-          const val = r['@_value'];
-          const votes = parseInt(r['@_numvotes'] || '0', 10);
-          if (val === 'Best') bestVotes = votes;
-          else if (val === 'Recommended') recVotes = votes;
-          else if (val === 'Not Recommended') notRecVotes = votes;
-        }
-
-        if (numPlayersStr) {
-          bestCounts.push({ players: numPlayersStr, bestVotes, recVotes, notRecVotes });
-        }
-      }
-
-      if (bestCounts.length > 0) {
-        // Encontrar os que têm mais votos "Best"
-        const maxBest = Math.max(...bestCounts.map(b => b.bestVotes));
-        const bestPlayers = maxBest > 0 
-          ? bestCounts.filter(b => b.bestVotes === maxBest && b.bestVotes >= b.notRecVotes).map(b => b.players)
-          : [];
-        
-        const recommendedPlayers = bestCounts
-          .filter(b => (b.bestVotes + b.recVotes) > b.notRecVotes && (b.bestVotes + b.recVotes) > 0)
-          .map(b => b.players);
-
-        let summary = '';
-        if (bestPlayers.length > 0) {
-          summary = `Ideal com ${bestPlayers.join(', ')} ${bestPlayers.length === 1 ? 'jogador' : 'jogadores'}`;
-        } else if (recommendedPlayers.length > 0) {
-          summary = `Recomendado para ${recommendedPlayers.join(', ')} jogadores`;
-        }
-
-        if (bestPlayers.length > 0 || recommendedPlayers.length > 0) {
-          suggestedPlayers = {
-            best: bestPlayers,
-            recommended: recommendedPlayers,
-            summary,
-          };
-        }
-      }
-    }
-
-    // Descrição limpa
-    let description: string | undefined;
-    if (item.description) {
-      description = String(item.description)
-        .replace(/&#10;/g, '\n')
-        .replace(/&quot;/g, '"')
-        .replace(/&amp;/g, '&')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&rsquo;/g, "'")
-        .replace(/&lsquo;/g, "'");
-    }
-
-    return {
-      bggId,
-      name: primaryName,
-      type: bggType,
-      isExpansion,
-      thumbnail: item.thumbnail,
-      image: item.image,
-      minPlayers: isNaN(minPlayers as number) ? undefined : minPlayers,
-      maxPlayers: isNaN(maxPlayers as number) ? undefined : maxPlayers,
-      yearPublished: isNaN(yearPublished as number) ? undefined : yearPublished,
-      rating: isNaN(rating as number) ? undefined : rating,
-      geekRating: isNaN(geekRating as number) ? undefined : geekRating,
-      weight: isNaN(weight as number) ? undefined : weight,
-      rank: bggRank,
-      domains: domains.length > 0 ? domains : undefined,
-      mechanics: mechanics.length > 0 ? mechanics : undefined,
-      honors: honors.length > 0 ? honors : undefined,
-      suggestedPlayers,
-      description,
-    };
+    return parseBGGItemNode(item);
   } catch (error) {
     console.error('Erro ao fazer parse do XML BGG:', error);
     return null;
+  }
+}
+
+export function parseBGGThingsBatchXml(xmlText: string): BGGParsedData[] {
+  try {
+    const obj = xmlParser.parse(xmlText);
+    if (!obj?.items?.item) return [];
+
+    const items = Array.isArray(obj.items.item) ? obj.items.item : [obj.items.item];
+    return items.map(parseBGGItemNode).filter((d: BGGParsedData | null): d is BGGParsedData => d !== null);
+  } catch (error) {
+    console.error('Erro ao fazer parse em lote do XML BGG:', error);
+    return [];
   }
 }
 
@@ -225,9 +256,12 @@ export async function fetchBGGGeekitems(bggId: string): Promise<BGGParsedData | 
 
     const mechanics: string[] = item.links?.boardgamemechanic?.map((m: any) => m.name) || [];
     const categories: string[] = item.links?.boardgamecategory?.map((c: any) => c.name) || [];
+    const designers: string[] = (item.links?.boardgamedesigner?.map((d: any) => d.name) || []).filter((n: string) => n && n !== '(Uncredited)');
+    const artists: string[] = (item.links?.boardgameartist?.map((a: any) => a.name) || []).filter((n: string) => n && n !== '(Uncredited)');
     const honors: string[] = item.links?.boardgamehonor?.map((h: any) => h.name) || [];
     const expands = item.links?.expandsboardgame || [];
     const isExpansion = item.subtype === 'boardgameexpansion' || (Array.isArray(expands) && expands.length > 0);
+    const parsedPlaytime = item.playingtime ? parseInt(item.playingtime, 10) : undefined;
 
     let cleanDesc: string | undefined;
     const rawDesc = item.description || item.short_description;
@@ -257,8 +291,12 @@ export async function fetchBGGGeekitems(bggId: string): Promise<BGGParsedData | 
       minPlayers: item.minplayers ? parseInt(item.minplayers, 10) : undefined,
       maxPlayers: item.maxplayers ? parseInt(item.maxplayers, 10) : undefined,
       yearPublished: item.yearpublished ? parseInt(item.yearpublished, 10) : undefined,
+      playtime: parsedPlaytime && !isNaN(parsedPlaytime) ? parsedPlaytime : undefined,
       domains: [...categories, ...mechanics],
       mechanics: mechanics.length > 0 ? mechanics : undefined,
+      categories: categories.length > 0 ? categories : undefined,
+      designers: designers.length > 0 ? Array.from(new Set(designers)) : undefined,
+      artists: artists.length > 0 ? Array.from(new Set(artists)) : undefined,
       honors: honors.length > 0 ? honors : undefined,
       description: cleanDesc,
       cardSleeves,
@@ -514,6 +552,92 @@ export async function fetchBGGThingWithRetry(
   }
 
   return await fetchBGGGeekitems(bggId);
+}
+
+/**
+ * Busca múltiplos jogos no BGG XML API2 em lotes de até 20 IDs por requisição.
+ * Útil para enriquecer rapidamente designers, artistas, mecânicas e tempo de jogo da coleção.
+ */
+export async function fetchBGGThingsBatch(
+  bggIds: string[],
+  options: {
+    token?: string;
+    maxRetries?: number;
+    chunkSize?: number;
+    signal?: AbortSignal;
+    onChunkComplete?: (loadedCount: number, totalCount: number) => void;
+  } = {}
+): Promise<Record<string, BGGParsedData>> {
+  const uniqueIds = Array.from(new Set(bggIds.map(id => String(id).trim()).filter(Boolean)));
+  const result: Record<string, BGGParsedData> = {};
+  if (uniqueIds.length === 0) return result;
+
+  const chunkSize = Math.min(Math.max(options.chunkSize ?? 20, 1), 20);
+  const maxRetries = options.maxRetries ?? 4;
+  const token = options.token || DEFAULT_BGG_TOKEN;
+  const headers: Record<string, string> = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  let processed = 0;
+
+  for (let i = 0; i < uniqueIds.length; i += chunkSize) {
+    if (options.signal?.aborted) break;
+    const chunk = uniqueIds.slice(i, i + chunkSize);
+    const url = `https://boardgamegeek.com/xmlapi2/thing?id=${chunk.join(',')}&stats=1`;
+
+    let chunkParsed: BGGParsedData[] = [];
+    let attempt = 0;
+    let succeeded = false;
+
+    while (attempt < maxRetries && !options.signal?.aborted) {
+      try {
+        const res = await fetch(url, { headers, signal: options.signal });
+
+        if (res.status === 202) {
+          await new Promise(r => setTimeout(r, 2000 + attempt * 1000));
+          attempt++;
+          continue;
+        }
+        if (res.status === 429) {
+          const backoff = Math.min(1200 * Math.pow(2, attempt) + Math.random() * 400, 12000);
+          await new Promise(r => setTimeout(r, backoff));
+          attempt++;
+          continue;
+        }
+        if (!res.ok) {
+          break;
+        }
+
+        const text = await res.text();
+        chunkParsed = parseBGGThingsBatchXml(text);
+        succeeded = chunkParsed.length > 0;
+        break;
+      } catch (e: any) {
+        if (e?.name === 'AbortError') break;
+        attempt++;
+        await new Promise(r => setTimeout(r, 800 * attempt));
+      }
+    }
+
+    if (succeeded) {
+      for (const item of chunkParsed) {
+        result[item.bggId] = item;
+      }
+    } else if (!options.signal?.aborted) {
+      // Fallback individual para JSON público geekitems
+      await Promise.allSettled(
+        chunk.map(async id => {
+          const single = await fetchBGGGeekitems(id);
+          if (single) result[single.bggId] = single;
+        })
+      );
+    }
+
+    processed += chunk.length;
+    options.onChunkComplete?.(processed, uniqueIds.length);
+  }
+
+  return result;
 }
 
 export async function searchBGGId(

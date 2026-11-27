@@ -41,8 +41,14 @@ export function AddGameModal({ isOpen, onClose, onAdd, ludoToken, bggToken }: Ad
   const [retailPrice, setRetailPrice] = useState<number | undefined>(undefined);
   const [usedPrice, setUsedPrice] = useState<number | undefined>(undefined);
   const [mechanics, setMechanics] = useState<string[] | undefined>(undefined);
+  const [categories, setCategories] = useState<string[] | undefined>(undefined);
+  const [designers, setDesigners] = useState<string[] | undefined>(undefined);
+  const [artists, setArtists] = useState<string[] | undefined>(undefined);
+  const [playtime, setPlaytime] = useState<number | undefined>(undefined);
   const [honors, setHonors] = useState<string[] | undefined>(undefined);
   const [suggestedPlayers, setSuggestedPlayers] = useState<any | undefined>(undefined);
+  const [acquiredAt, setAcquiredAt] = useState(() => new Date().toISOString().split('T')[0]);
+  const [soldAt, setSoldAt] = useState('');
 
   const [isSearching, setIsSearching] = useState(false);
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
@@ -75,6 +81,10 @@ export function AddGameModal({ isOpen, onClose, onAdd, ludoToken, bggToken }: Ad
         if (d.rank) setRank(d.rank);
         if (d.geekRating) setGeekRating(d.geekRating);
         if (d.mechanics) setMechanics(d.mechanics);
+        if (d.categories) setCategories(d.categories);
+        if (d.designers) setDesigners(d.designers);
+        if (d.artists) setArtists(d.artists);
+        if (d.playtime) setPlaytime(d.playtime);
         if (d.honors) setHonors(d.honors);
         if (d.suggestedPlayers) setSuggestedPlayers(d.suggestedPlayers);
       }
@@ -207,8 +217,15 @@ export function AddGameModal({ isOpen, onClose, onAdd, ludoToken, bggToken }: Ad
       retailPrice,
       usedPrice,
       mechanics,
+      categories,
+      designers,
+      artists,
+      playtime,
       honors,
       suggestedPlayers,
+      acquiredAt: status !== 'Desejo' ? (acquiredAt || undefined) : undefined,
+      soldAt: status === 'Vendido' ? (soldAt || new Date().toISOString().split('T')[0]) : undefined,
+      wishlistAt: status === 'Desejo' ? (acquiredAt || new Date().toISOString().split('T')[0]) : undefined,
     });
     
     // Limpar form
@@ -236,8 +253,14 @@ export function AddGameModal({ isOpen, onClose, onAdd, ludoToken, bggToken }: Ad
     setRetailPrice(undefined);
     setUsedPrice(undefined);
     setMechanics(undefined);
+    setCategories(undefined);
+    setDesigners(undefined);
+    setArtists(undefined);
+    setPlaytime(undefined);
     setHonors(undefined);
     setSuggestedPlayers(undefined);
+    setAcquiredAt(new Date().toISOString().split('T')[0]);
+    setSoldAt('');
     setSearchResults([]);
     onClose();
   };
@@ -575,6 +598,33 @@ export function AddGameModal({ isOpen, onClose, onAdd, ludoToken, bggToken }: Ad
               />
             </div>
           )}
+
+          <div style={{ display: 'flex', gap: '1rem' }}>
+            <div style={{ flex: 1 }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-muted)' }}>
+                {status === 'Desejo' ? 'Data nos Desejos' : 'Data de Entrada na Coleção'}
+              </label>
+              <input
+                type="date"
+                value={acquiredAt}
+                onChange={e => setAcquiredAt(e.target.value)}
+                className="search-input"
+                style={{ width: '100%' }}
+              />
+            </div>
+            {status === 'Vendido' && (
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-muted)' }}>Data de Saída / Venda</label>
+                <input
+                  type="date"
+                  value={soldAt}
+                  onChange={e => setSoldAt(e.target.value)}
+                  className="search-input"
+                  style={{ width: '100%' }}
+                />
+              </div>
+            )}
+          </div>
 
           <div style={{ display: 'flex', gap: '1rem' }}>
             <div style={{ flex: 1 }}>

@@ -117,6 +117,7 @@ export async function updateSingleGameParallel(
 
   return {
     ...game,
+    namePt: ludoData?.namePt || game.namePt,
     spend: updatedSpend,
     bggId: bggId || game.bggId,
     ludoId: ludoData?.ludoId || game.ludoId,
@@ -126,6 +127,7 @@ export async function updateSingleGameParallel(
     yearPublished: bggData?.yearPublished || ludoData?.yearPublished || game.yearPublished,
     minPlayers: bggData?.minPlayers || ludoData?.minPlayers || game.minPlayers,
     maxPlayers: bggData?.maxPlayers || ludoData?.maxPlayers || game.maxPlayers,
+    playtime: bggData?.playtime || ludoData?.playtime || game.playtime,
     rating: bggData?.rating || game.rating,
     geekRating: bggData?.geekRating || game.geekRating,
     ludoRating: ludoData?.ludoRating || game.ludoRating,
@@ -135,6 +137,11 @@ export async function updateSingleGameParallel(
     rank: bggData?.rank || comparaData?.bggRank || ludoData?.rank || game.rank,
     domains: mergedDomains.length > 0 ? mergedDomains : game.domains,
     mechanics: bggData?.mechanics || game.mechanics,
+    mechanicsPt: ludoData?.mechanicsPt || game.mechanicsPt,
+    categories: ludoData?.categories || bggData?.categories || game.categories,
+    themes: ludoData?.themes || game.themes,
+    designers: (ludoData?.designers?.length ? ludoData.designers : bggData?.designers) || game.designers,
+    artists: (ludoData?.artists?.length ? ludoData.artists : bggData?.artists) || game.artists,
     honors: bggData?.honors || game.honors,
     suggestedPlayers: bggData?.suggestedPlayers || game.suggestedPlayers,
     description: bggData?.description || game.description,

@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { Dices, Upload, Trash2, Search, Plus, Settings, DownloadCloud, FileSpreadsheet, PieChart, FileJson, Eye, EyeOff, Zap, X, Layers, Cloud } from 'lucide-react';
+import { Dices, Upload, Trash2, Search, Plus, Settings, DownloadCloud, FileSpreadsheet, PieChart, FileJson, Eye, EyeOff, Zap, X, Layers, Cloud, Sparkles } from 'lucide-react';
 import { useAuth } from './contexts/AuthContext';
 import { useCollection } from './hooks/useCollection';
 import { useSleeveStock } from './hooks/useSleeveStock';
@@ -15,6 +15,7 @@ import { PlaysReportModal } from './components/PlaysReportModal';
 import { HelpModal } from './components/HelpModal';
 import { PlayedStatusChart } from './components/PlayedStatusChart';
 import { SleevesStockTab } from './components/SleevesStockTab';
+import { RetrospectivaTab } from './components/RetrospectivaTab';
 import { WhoGoesModal } from './components/WhoGoesModal';
 import type { GameData } from './types';
 import { isGameInCollection } from './utils/sleeveUtils';
@@ -51,6 +52,8 @@ function App() {
     fetchLudoDataForGames, 
     fetchComparaDataForGames,
     fetchSleevesForGames,
+    enrichGamesMetadata,
+    patchGamesBatch,
     isBatchUpdating,
     batchProgress,
     updatingGameIds,
@@ -67,7 +70,7 @@ function App() {
     setStock: setSleeveStock,
   } = useSleeveStock(user);
 
-  const [activeMainTab, setActiveMainTab] = useState<'collection' | 'sleeves'>('collection');
+  const [activeMainTab, setActiveMainTab] = useState<'collection' | 'sleeves' | 'retrospective'>('collection');
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('Todos');
   const [typeFilter, setTypeFilter] = useState('Todos');
@@ -457,7 +460,7 @@ function App() {
         </div>
       </header>
 
-      {/* Navegação por Abas: Coleção de Jogos & Estoque de Sleeves */}
+      {/* Navegação por Abas: Coleção de Jogos, Estoque de Sleeves & Retrospectiva */}
       <div className="main-tab-nav animate-fade-in">
         <button
           className={`main-tab-btn ${activeMainTab === 'collection' ? 'active' : ''}`}
@@ -477,10 +480,32 @@ function App() {
             {sleeveStock.reduce((acc, s) => acc + (Number(s.quantity) || 0), 0)}
           </span>
         </button>
+        <button
+          className={`main-tab-btn ${activeMainTab === 'retrospective' ? 'active' : ''}`}
+          onClick={() => setActiveMainTab('retrospective')}
+        >
+          <Sparkles size={18} />
+          <span>Retrospectiva</span>
+          <span className="tab-badge">{new Date().getFullYear()}</span>
+        </button>
       </div>
 
       <main>
-        {activeMainTab === 'sleeves' ? (
+        {activeMainTab === 'retrospective' ? (
+          <RetrospectivaTab
+            userId={user?.id}
+            username={username}
+            games={games}
+            ludoToken={ludoToken}
+            isBatchUpdating={isBatchUpdating}
+            batchProgress={batchProgress}
+            onOpenSettings={() => setIsSettingsModalOpen(true)}
+            onClickGameDetails={handleClickDetails}
+            onSyncPlayCounts={syncPlayCounts}
+            onPatchGamesBatch={patchGamesBatch}
+            onEnrichMetadata={(targetGames) => enrichGamesMetadata(targetGames, { includeLudopedia: true })}
+          />
+        ) : activeMainTab === 'sleeves' ? (
           <SleevesStockTab
             games={games.filter(isGameInCollection)}
             stock={sleeveStock}

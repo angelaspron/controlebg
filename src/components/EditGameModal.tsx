@@ -74,6 +74,9 @@ export function EditGameModal({
   const [yearPublished, setYearPublished] = useState('');
   const [rating, setRating] = useState('');
   const [ludoRating, setLudoRating] = useState('');
+  const [acquiredAt, setAcquiredAt] = useState('');
+  const [soldAt, setSoldAt] = useState('');
+  const [wishlistAt, setWishlistAt] = useState('');
   const [noCards, setNoCards] = useState(false);
   const [isSleeved, setIsSleeved] = useState(false);
   const [sleeveBrand, setSleeveBrand] = useState('');
@@ -104,6 +107,9 @@ export function EditGameModal({
       setYearPublished(game.yearPublished ? String(game.yearPublished) : '');
       setRating(game.rating ? String(game.rating) : '');
       setLudoRating(game.ludoRating ? String(game.ludoRating) : '');
+      setAcquiredAt(game.acquiredAt || '');
+      setSoldAt(game.soldAt || '');
+      setWishlistAt(game.wishlistAt || '');
       setNoCards(Boolean(game.noCards));
       setIsSleeved(Boolean(game.isSleeved));
       setSleeveBrand(game.sleeveBrand || '');
@@ -406,6 +412,14 @@ export function EditGameModal({
     let finalSleeveBrand = isSleeved ? sleeveBrand.trim() : undefined;
     let finalSleeveType = isSleeved ? sleeveType.trim() : undefined;
 
+    const todayIso = new Date().toISOString().split('T')[0];
+    const resolvedSoldAt = status.trim() === 'Vendido'
+      ? (soldAt || (game.status !== 'Vendido' ? todayIso : undefined))
+      : (soldAt || undefined);
+    const resolvedAcquiredAt = (status.trim() === 'Na Coleção' && game.status === 'Desejo' && !acquiredAt)
+      ? todayIso
+      : (acquiredAt || undefined);
+
     if (noCards) {
       onSave(game.id, {
         name: name.trim(),
@@ -423,6 +437,9 @@ export function EditGameModal({
         yearPublished: yearPublished ? parseInt(yearPublished) : undefined,
         rating: rating ? parseFloat(rating.replace(',', '.')) : undefined,
         ludoRating: ludoRating ? parseFloat(ludoRating.replace(',', '.')) : undefined,
+        acquiredAt: resolvedAcquiredAt,
+        soldAt: resolvedSoldAt,
+        wishlistAt: wishlistAt || undefined,
         noCards: true,
         isSleeved: false,
         sleeveStatus: 'none',
@@ -520,6 +537,9 @@ export function EditGameModal({
       yearPublished: yearPublished ? parseInt(yearPublished) : undefined,
       rating: rating ? parseFloat(rating.replace(',', '.')) : undefined,
       ludoRating: ludoRating ? parseFloat(ludoRating.replace(',', '.')) : undefined,
+      acquiredAt: resolvedAcquiredAt,
+      soldAt: resolvedSoldAt,
+      wishlistAt: wishlistAt || undefined,
       noCards: false,
       isSleeved: finalIsSleeved,
       sleeveStatus: finalSleeveStatus,
@@ -1243,6 +1263,43 @@ export function EditGameModal({
               />
             </div>
           )}
+
+          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: '160px' }}>
+              <label style={labelStyle}>Data de Entrada na Coleção</label>
+              <input
+                type="date"
+                value={acquiredAt}
+                onChange={e => setAcquiredAt(e.target.value)}
+                className="search-input"
+                style={{ width: '100%' }}
+              />
+            </div>
+            {status === 'Vendido' && (
+              <div style={{ flex: 1, minWidth: '160px' }}>
+                <label style={labelStyle}>Data de Saída / Venda</label>
+                <input
+                  type="date"
+                  value={soldAt}
+                  onChange={e => setSoldAt(e.target.value)}
+                  className="search-input"
+                  style={{ width: '100%' }}
+                />
+              </div>
+            )}
+            {status === 'Desejo' && (
+              <div style={{ flex: 1, minWidth: '160px' }}>
+                <label style={labelStyle}>Data nos Desejos</label>
+                <input
+                  type="date"
+                  value={wishlistAt}
+                  onChange={e => setWishlistAt(e.target.value)}
+                  className="search-input"
+                  style={{ width: '100%' }}
+                />
+              </div>
+            )}
+          </div>
 
           <div style={{ display: 'flex', gap: '1rem' }}>
             <div style={{ flex: 1 }}>

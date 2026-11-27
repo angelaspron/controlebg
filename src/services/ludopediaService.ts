@@ -1,5 +1,12 @@
 import { matchesGameName } from '../utils/nameMatcher.ts';
-import type { CardSleevesData, CardSleeveSet, LudopediaMatch, LudopediaPlaysSummary } from '../types/index.ts';
+import type {
+  CardSleevesData,
+  CardSleeveSet,
+  LudopediaMatch,
+  LudopediaPlaysSummary,
+  LudopediaMeProfile,
+  LudopediaWishlistItem,
+} from '../types/index.ts';
 import { getCardSleeveSizeName, parseModelDimensions } from '../utils/sleeveUtils.ts';
 
 export interface LudopediaParsedData {
@@ -13,15 +20,22 @@ export interface LudopediaParsedData {
   yearPublished?: number;
   minPlayers?: number;
   maxPlayers?: number;
+  playtime?: number;
   ludoRating?: number;
   rank?: number;
   domains?: string[];
+  mechanicsPt?: string[];
+  categories?: string[];
+  themes?: string[];
+  designers?: string[];
+  artists?: string[];
   bggId?: string;
   isPlayed?: boolean;
   isOwned?: boolean;
   cardSleeves?: CardSleevesData; // Quantidade e tipos de sleeves extraídos da Ludopedia (fallback secundário)
   spend?: number; // Valor pago pelo usuário (vl_custo)
   playCount?: number; // Quantidade de partidas jogadas informada pela Ludopedia
+  acquiredAt?: string; // Data se retornada pela API (YYYY-MM-DD)
 }
 
 /**
@@ -515,12 +529,51 @@ export function parseLudopediaDetail(data: any, shallowData: any = {}): Ludopedi
     }
   }
 
-  // Extrair domínios brutos para uso externo
-  const domainsOut: string[] = [
-    ...(data.categorias || shallowData.categorias || []).map((c: any) => c.nm_categoria),
-    ...(data.mecanicas || shallowData.mecanicas || []).map((m: any) => m.nm_mecanica),
-    ...(data.temas || shallowData.temas || []).map((t: any) => t.nm_tema)
-  ].filter(Boolean);
+  // Extrair mecânicas, categorias, temas, designers e artistas separadamente
+  const rawMecanicas = Array.isArray(data.mecanicas) ? data.mecanicas : (Array.isArray(shallowData.mecanicas) ? shallowData.mecanicas : []);
+  const rawCategorias = Array.isArray(data.categorias) ? data.categorias : (Array.isArray(shallowData.categorias) ? shallowData.categorias : []);
+  const rawTemas = Array.isArray(data.temas) ? data.temas : (Array.isArray(shallowData.temas) ? shallowData.temas : []);
+  const rawDesigners = Array.isArray(data.designers) ? data.designers : (Array.isArray(shallowData.designers) ? shallowData.designers : []);
+  const rawArtistas = Array.isArray(data.artistas) ? data.artistas : (Array.isArray(shallowData.artistas) ? shallowData.artistas : []);
+
+  const mechanicsPt: string[] = Array.from(new Set(
+    rawMecanicas.map((m: any) => String(m?.nm_mecanica || m?.nome || '').trim()).filter(Boolean)
+  ));
+  const categoriesOut: string[] = Array.from(new Set(
+    rawCategorias.map((c: any) => String(c?.nm_categoria || c?.nome || '').trim()).filter(Boolean)
+  ));
+  const themesOut: string[] = Array.from(new Set(
+    rawTemas.map((t: any) => String(t?.nm_tema || t?.nome || '').trim()).filter(Boolean)
+  ));
+  const designersOut: string[] = Array.from(new Set(
+    rawDesigners.map((d: any) => String(d?.nm_profissional || d?.nome || d?.name || '').trim()).filter(Boolean)
+  ));
+  const artistsOut: string[] = Array.from(new Set(
+    rawArtistas.map((a: any) => String(a?.nm_profissional || a?.nome || a?.name || '').trim()).filter(Boolean)
+  ));
+
+  // Extrair domínios brutos para compatibilidade retroativa
+  const domainsOut: string[] = Array.from(new Set([
+    ...categoriesOut,
+    ...mechanicsPt,
+    ...themesOut,
+  ]));
+
+  const playtimeRaw = data.vl_tempo_jogo ?? shallowData.vl_tempo_jogo ?? data.tempo_jogo;
+  const parsedPlaytime = playtimeRaw ? parseInt(String(playtimeRaw), 10) : NaN;
+  const playtime = !isNaN(parsedPlaytime) && parsedPlaytime > 0 ? parsedPlaytime : undefined;
+
+  const rawDate =
+    data.dt_aquisicao || shallowData.dt_aquisicao ||
+    data.dt_cadastro || shallowData.dt_cadastro ||
+    data.dt_inclusao || shallowData.dt_inclusao;
+  let acquiredAt: string | undefined;
+  if (typeof rawDate === 'string' && rawDate.trim()) {
+    const isoMatch = rawDate.trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+    const brMatch = rawDate.trim().match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+    if (isoMatch) acquiredAt = `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+    else if (brMatch) acquiredAt = `${brMatch[3]}-${brMatch[2]}-${brMatch[1]}`;
+  }
 
   const rankRaw = data.rank_jogo || shallowData.rank_jogo || data.posicao_rank || shallowData.posicao_rank || data.rank || shallowData.rank;
   const rank = rankRaw ? parseInt(rankRaw, 10) : undefined;
@@ -552,15 +605,22 @@ export function parseLudopediaDetail(data: any, shallowData: any = {}): Ludopedi
     yearPublished: (data.ano_publicacao || shallowData.ano_publicacao) ? parseInt(data.ano_publicacao || shallowData.ano_publicacao, 10) : undefined,
     minPlayers: (data.qt_jogadores_min || shallowData.qt_jogadores_min) ? parseInt(data.qt_jogadores_min || shallowData.qt_jogadores_min, 10) : undefined,
     maxPlayers: (data.qt_jogadores_max || shallowData.qt_jogadores_max) ? parseInt(data.qt_jogadores_max || shallowData.qt_jogadores_max, 10) : undefined,
+    playtime,
     ludoRating: (data.vl_nota || shallowData.vl_nota) ? parseFloat(data.vl_nota || shallowData.vl_nota) : undefined,
     rank: isNaN(rank as number) ? undefined : rank,
     domains: domainsOut.length > 0 ? domainsOut : undefined,
+    mechanicsPt: mechanicsPt.length > 0 ? mechanicsPt : undefined,
+    categories: categoriesOut.length > 0 ? categoriesOut : undefined,
+    themes: themesOut.length > 0 ? themesOut : undefined,
+    designers: designersOut.length > 0 ? designersOut : undefined,
+    artists: artistsOut.length > 0 ? artistsOut : undefined,
     bggId: inferredBggId,
     isOwned,
     isPlayed: isOwned ? rawIsPlayed : false,
     playCount: resolvedPlayCount,
     cardSleeves: parseLudopediaSleeves(data, shallowData),
     spend,
+    acquiredAt,
   };
 }
 
@@ -932,5 +992,96 @@ export async function fetchLudopediaPlaysGroupedByGame(
   }
 
   return { countByLudoId, countByName };
+}
+
+/**
+ * Busca os dados do usuário autenticado na Ludopedia (/me).
+ */
+export async function fetchLudopediaMe(token: string): Promise<LudopediaMeProfile | null> {
+  const resolvedToken = resolveStoredLudoToken(token);
+  if (!resolvedToken) return null;
+
+  const res = await fetchLudoApi('/ludo-api/me', resolvedToken, 3);
+  if (!res || !res.ok) return null;
+
+  try {
+    const json = await res.json();
+    if (!json || (!json.id_usuario && !json.usuario)) return null;
+    return {
+      id_usuario: Number(json.id_usuario || 0),
+      usuario: String(json.usuario || '').trim(),
+      thumb: json.thumb || undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Busca a lista de desejos (lista=lista_desejos) da Ludopedia sem misturar com a coleção principal.
+ */
+export async function fetchLudopediaWishlist(token: string): Promise<LudopediaWishlistItem[]> {
+  const resolvedToken = resolveStoredLudoToken(token);
+  if (!resolvedToken) return [];
+
+  const items: LudopediaWishlistItem[] = [];
+  let page = 1;
+  let hasMore = true;
+
+  while (hasMore) {
+    const res = await fetchLudoApi(`/ludo-api/colecao?lista=lista_desejos&rows=100&page=${page}`, resolvedToken, 3);
+    if (!res || !res.ok) break;
+
+    try {
+      const json = await res.json();
+      const rawList = Array.isArray(json.colecao) ? json.colecao : [];
+      if (rawList.length === 0) break;
+
+      for (const it of rawList) {
+        if (!it?.id_jogo) continue;
+        items.push({
+          ludoId: String(it.id_jogo),
+          name: String(it.nm_jogo || 'Jogo Desconhecido'),
+          thumbnail: it.thumb || undefined,
+          yearPublished: it.ano_publicacao ? parseInt(String(it.ano_publicacao), 10) : undefined,
+          link: it.link || `https://ludopedia.com.br/jogo/${it.id_jogo}`,
+        });
+      }
+
+      const total = Number(json.total) || rawList.length;
+      if (page * 100 >= total || rawList.length < 100) {
+        hasMore = false;
+      } else {
+        page++;
+        await new Promise(r => setTimeout(r, 200));
+      }
+    } catch {
+      break;
+    }
+  }
+
+  return items;
+}
+
+/**
+ * Consulta leve da ficha de um jogo na Ludopedia (/jogos/:id) apenas para enriquecer
+ * metadados (designers, artistas, mecânicas em PT-BR, categorias, temas, tempo de jogo).
+ */
+export async function fetchLudopediaGameMetadata(
+  ludoId: string,
+  token: string
+): Promise<LudopediaParsedData | null> {
+  const resolvedToken = resolveStoredLudoToken(token);
+  if (!resolvedToken || !ludoId) return null;
+
+  const res = await fetchLudoApi(`/ludo-api/jogos/${ludoId}`, resolvedToken, 4);
+  if (!res || !res.ok) return null;
+
+  try {
+    const json = await res.json();
+    return parseLudopediaDetail(json, {});
+  } catch {
+    return null;
+  }
 }
 

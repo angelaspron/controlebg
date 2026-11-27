@@ -17,8 +17,8 @@ import {
   processBatchWithConcurrency, 
   type BatchProgress 
 } from '../services/batchProcessor';
-import { fetchBGGThingWithRetry, searchBGGId, DEFAULT_BGG_TOKEN, fetchBGGSleeves } from '../services/bggService';
-import { fetchLudopediaData, parseIsPlayedFromLudo, parsePlayCountFromLudo, isOwnedInLudopedia } from '../services/ludopediaService';
+import { fetchBGGThingWithRetry, fetchBGGThingsBatch, searchBGGId, DEFAULT_BGG_TOKEN, fetchBGGSleeves } from '../services/bggService';
+import { fetchLudopediaData, fetchLudopediaGameMetadata, parseIsPlayedFromLudo, parsePlayCountFromLudo, isOwnedInLudopedia } from '../services/ludopediaService';
 import { fetchComparaJogosData, searchBggIdViaCompara } from '../services/comparaService';
 import { matchesGameName, normalizeGameName } from '../utils/nameMatcher';
 import { isGameInCollection, getGameSleeveStatus } from '../utils/sleeveUtils';
@@ -292,6 +292,25 @@ export function useCollection(user?: User | null) {
               }
             }
 
+            const parseSpreadsheetDate = (raw: any): string | undefined => {
+              if (raw === undefined || raw === null || raw === '') return undefined;
+              if (typeof raw === 'number' && raw > 20000 && raw < 90000) {
+                const utcDays = Math.floor(raw - 25569);
+                const d = new Date(utcDays * 86400 * 1000);
+                if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
+              }
+              const s = String(raw).trim();
+              const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+              if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+              const br = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+              if (br) return `${br[3]}-${br[2]}-${br[1]}`;
+              return undefined;
+            };
+
+            const acquiredAt = parseSpreadsheetDate(getVal(row, ['data entrada', 'data de entrada', 'data aquisicao', 'data de aquisicao', 'data compra', 'acquired', 'acquiredat']));
+            const soldAt = parseSpreadsheetDate(getVal(row, ['data saida', 'data de saida', 'data venda', 'data de venda', 'soldat', 'sold date']));
+            const wishlistAt = parseSpreadsheetDate(getVal(row, ['data desejo', 'wishlistat']));
+
             return {
               id: `local-${index}-${Date.now()}`,
               name,
@@ -301,6 +320,9 @@ export function useCollection(user?: User | null) {
               value: toNumber(mappedValue !== undefined ? mappedValue : getVal(row, ['valor mercado', 'valor de mercado', 'mercado', 'market value', 'market'])),
               soldValue: toNumber(mappedSoldValue !== undefined ? mappedSoldValue : getVal(row, ['valor vendido', 'venda', 'sold'])),
               isPlayed: detectedIsPlayed,
+              acquiredAt,
+              soldAt,
+              wishlistAt,
             };
           });
 
@@ -437,6 +459,7 @@ export function useCollection(user?: User | null) {
                     minPlayers: bggData.minPlayers || g.minPlayers,
                     maxPlayers: bggData.maxPlayers || g.maxPlayers,
                     yearPublished: bggData.yearPublished || g.yearPublished,
+                    playtime: bggData.playtime || g.playtime,
                     rating: bggData.rating || g.rating,
                     geekRating: bggData.geekRating || g.geekRating,
                     weight: bggData.weight !== undefined 
@@ -444,6 +467,9 @@ export function useCollection(user?: User | null) {
                       : (g.weight !== undefined ? Math.round(Number(g.weight) * 100) / 100 : undefined),
                     domains: bggData.domains || g.domains,
                     mechanics: bggData.mechanics || g.mechanics,
+                    categories: bggData.categories || g.categories,
+                    designers: bggData.designers || g.designers,
+                    artists: bggData.artists || g.artists,
                     honors: bggData.honors || g.honors,
                     suggestedPlayers: bggData.suggestedPlayers || g.suggestedPlayers,
                     description: bggData.description || g.description,
@@ -524,6 +550,7 @@ export function useCollection(user?: User | null) {
                     : g.spend);
               return {
                 ...g,
+                namePt: ludoData.namePt || g.namePt,
                 spend: updatedSpend,
                 ludoId: ludoData.ludoId || g.ludoId,
                 bggId: ludoData.bggId || g.bggId,
@@ -533,10 +560,17 @@ export function useCollection(user?: User | null) {
                 yearPublished: ludoData.yearPublished || g.yearPublished,
                 minPlayers: ludoData.minPlayers || g.minPlayers,
                 maxPlayers: ludoData.maxPlayers || g.maxPlayers,
+                playtime: ludoData.playtime || g.playtime,
                 ludoRating: ludoData.ludoRating || g.ludoRating,
                 rank: ludoData.rank || g.rank,
                 domains: ludoData.domains || g.domains,
+                mechanicsPt: ludoData.mechanicsPt || g.mechanicsPt,
+                categories: ludoData.categories || g.categories,
+                themes: ludoData.themes || g.themes,
+                designers: (ludoData.designers?.length ? ludoData.designers : g.designers),
+                artists: (ludoData.artists?.length ? ludoData.artists : g.artists),
                 descriptionPt: ludoData.descriptionPt || g.descriptionPt,
+                acquiredAt: g.acquiredAt || ludoData.acquiredAt,
                 isPlayed: (g.isPlayed !== undefined || ludoData.isPlayed !== undefined)
                   ? ((ludoData.isExpansion || g.type === 'Expansão' || (g as any).isExpansion) && ludoData.isPlayed !== undefined
                       ? ludoData.isPlayed
@@ -975,6 +1009,8 @@ export function useCollection(user?: User | null) {
 
         setGames(prev => {
           const newPrev = [...prev];
+          const hadExistingGames = prev.length > 0;
+          const todayIso = new Date().toISOString().split('T')[0];
           
           for (const ng of newGames) {
             const isNgExp = ng.type === 'Expansão';
@@ -995,16 +1031,19 @@ export function useCollection(user?: User | null) {
               const prevSpendNum = typeof prevG.spend === 'string' ? parseFloat(String(prevG.spend).replace(',', '.')) : Number(prevG.spend);
               const ngSpendNum = typeof ng.spend === 'string' ? parseFloat(String(ng.spend).replace(',', '.')) : Number(ng.spend);
               const resolvedSpend = (ngSpendNum > 0) ? ngSpendNum : (isNaN(prevSpendNum) || prevSpendNum <= 0 ? (ngSpendNum || 0) : prevG.spend);
+              const nextStatus = prevG.status === 'Desconhecido' ? ng.status : prevG.status;
+              const becameSold = prevG.status !== 'Vendido' && ng.status === 'Vendido';
 
               newPrev[existingIndex] = {
                 ...prevG,
                 ludoId: prevG.ludoId || ng.ludoId,
                 thumbnail: prevG.thumbnail || ng.thumbnail,
                 ludoRating: prevG.ludoRating || ng.ludoRating,
-                status: prevG.status === 'Desconhecido' ? ng.status : prevG.status,
+                status: nextStatus,
                 spend: resolvedSpend,
                 yearPublished: prevG.yearPublished || ng.yearPublished,
                 type: ng.type || prevG.type,
+                soldAt: prevG.soldAt || (becameSold ? todayIso : undefined),
                 // Para expansão: o status isPlayed deve refletir diretamente a API da Ludopedia.
                 // Se na API não constar JOGADO, vem como NÃO JOGADO (sem herdar do jogo base ou do cache).
                 isPlayed: isExpTarget ? ng.isPlayed : Boolean(prevG.isPlayed || ng.isPlayed),
@@ -1019,7 +1058,11 @@ export function useCollection(user?: User | null) {
                 // Descarta o item do merge final
                 continue;
               }
-              newPrev.push(ng);
+              newPrev.push({
+                ...ng,
+                acquiredAt: ng.acquiredAt || (hadExistingGames && ng.status === 'Na Coleção' ? todayIso : undefined),
+                soldAt: ng.soldAt || (hadExistingGames && ng.status === 'Vendido' ? todayIso : undefined),
+              });
             }
           }
 
@@ -1126,6 +1169,13 @@ export function useCollection(user?: User | null) {
           const numPlays = rawNumPlays !== undefined ? parseInt(String(rawNumPlays), 10) : 0;
           const isPlayedFromBgg = !isNaN(numPlays) && numPlays > 0;
 
+          const rawAcqDate = item.privateinfo?.['@_acquisitiondate'] || statusNode['@_lastmodified'];
+          let bggDateIso: string | undefined;
+          if (typeof rawAcqDate === 'string') {
+            const m = rawAcqDate.trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+            if (m) bggDateIso = `${m[1]}-${m[2]}-${m[3]}`;
+          }
+
           return {
             id: `bgg-${item['@_objectid']}-${Date.now()}-${idx}`,
             bggId: item['@_objectid'],
@@ -1143,12 +1193,17 @@ export function useCollection(user?: User | null) {
             geekRating: bayesRating,
             rank: !isNaN(bggRank as number) ? bggRank : undefined,
             isPlayed: isPlayedFromBgg ? true : undefined,
+            acquiredAt: mappedStatus === 'Na Coleção' ? bggDateIso : undefined,
+            soldAt: mappedStatus === 'Vendido' ? bggDateIso : undefined,
+            wishlistAt: mappedStatus === 'Desejo' ? bggDateIso : undefined,
           };
         });
 
         setGames(prev => {
           const newPrev = [...prev];
           const toAdd: GameData[] = [];
+          const hadExistingGames = prev.length > 0;
+          const todayIso = new Date().toISOString().split('T')[0];
 
           for (const ng of newGames) {
             const existingIndex = newPrev.findIndex(g => 
@@ -1170,13 +1225,19 @@ export function useCollection(user?: User | null) {
                 rating: newPrev[existingIndex].rating || ng.rating,
                 geekRating: newPrev[existingIndex].geekRating || ng.geekRating,
                 rank: newPrev[existingIndex].rank || ng.rank,
+                acquiredAt: newPrev[existingIndex].acquiredAt || ng.acquiredAt,
+                soldAt: newPrev[existingIndex].soldAt || ng.soldAt,
                 type: (newPrev[existingIndex].type === 'Base' || newPrev[existingIndex].type === 'Desconhecido') && ng.type !== 'Base' ? ng.type : newPrev[existingIndex].type,
                 isPlayed: (newPrev[existingIndex].isPlayed !== undefined || ng.isPlayed !== undefined)
                   ? Boolean(newPrev[existingIndex].isPlayed || ng.isPlayed)
                   : undefined,
               };
             } else {
-              toAdd.push(ng);
+              toAdd.push({
+                ...ng,
+                acquiredAt: ng.acquiredAt || (hadExistingGames && ng.status === 'Na Coleção' ? todayIso : undefined),
+                soldAt: ng.soldAt || (hadExistingGames && ng.status === 'Vendido' ? todayIso : undefined),
+              });
             }
           }
           
@@ -1250,6 +1311,9 @@ export function useCollection(user?: User | null) {
       'Tipo': g.type,
       'Valor Mercado': g.value,
       'Ano de Publicação': g.yearPublished || '',
+      'Data Entrada': g.acquiredAt || '',
+      'Data Saída': g.soldAt || '',
+      'Designers': (g.designers || []).join('; '),
       'Nota BGG': g.rating ? g.rating.toFixed(1) : '',
       'Geek Rating': g.geekRating ? g.geekRating.toFixed(2) : '',
       'BGG ID': g.bggId || '',
@@ -1353,6 +1417,141 @@ export function useCollection(user?: User | null) {
     });
   }, []);
 
+  /**
+   * Atualiza múltiplos jogos em lote (ex: atribuição de datas de aquisição/saída ou metadados).
+   */
+  const patchGamesBatch = useCallback((updatesById: Record<string, Partial<GameData>>) => {
+    const keys = Object.keys(updatesById);
+    if (keys.length === 0) return;
+
+    setGames(prev => {
+      let changed = false;
+      const next = prev.map(g => {
+        const patch = updatesById[g.id];
+        if (!patch) return g;
+        changed = true;
+        return { ...g, ...patch };
+      });
+      return changed ? next : prev;
+    });
+  }, []);
+
+  /**
+   * Enriquecimento rápido de metadados (designers, artistas, mecânicas em PT-BR e tempo de jogo)
+   * usando BGG em lotes de até 20 IDs por chamada + Ludopedia para nomes em PT-BR e mecânicas nacionais.
+   */
+  const enrichGamesMetadata = useCallback(async (
+    targetGames: GameData[],
+    options: { includeLudopedia?: boolean } = {}
+  ): Promise<number> => {
+    const missingBggMeta = targetGames.filter(
+      g => g.bggId && (!g.designers || g.designers.length === 0 || !g.playtime)
+    );
+    const missingLudoMeta = options.includeLudopedia && ludoToken
+      ? targetGames.filter(g => g.ludoId && (!g.mechanicsPt || g.mechanicsPt.length === 0 || !g.designers || g.designers.length === 0))
+      : [];
+
+    if (missingBggMeta.length === 0 && missingLudoMeta.length === 0) return 0;
+
+    abortControllerRef.current = new AbortController();
+    setIsBatchUpdating(true);
+    const totalSteps = missingBggMeta.length + missingLudoMeta.length;
+    let completed = 0;
+    const patches: Record<string, Partial<GameData>> = {};
+
+    try {
+      // 1. Lote BGG XMLAPI2 (até 20 jogos por requisição)
+      if (missingBggMeta.length > 0) {
+        setBatchProgress({
+          current: 0,
+          total: totalSteps,
+          percentage: 0,
+          currentGameName: `Consultando ${missingBggMeta.length} jogos no BGG (lotes de 20)...`,
+          activeApi: 'BGG Batch (Designers & Mecânicas)',
+        });
+
+        const bggMap = await fetchBGGThingsBatch(
+          missingBggMeta.map(g => g.bggId!),
+          {
+            token: bggToken,
+            signal: abortControllerRef.current.signal,
+            onChunkComplete: (done) => {
+              completed = done;
+              setBatchProgress({
+                current: completed,
+                total: totalSteps,
+                percentage: Math.round((completed / Math.max(totalSteps, 1)) * 100),
+                currentGameName: `${done}/${missingBggMeta.length} fichas BGG obtidas`,
+                activeApi: 'BGG Batch (Designers & Mecânicas)',
+              });
+            },
+          }
+        );
+
+        for (const g of missingBggMeta) {
+          const parsed = g.bggId ? bggMap[g.bggId] : undefined;
+          if (!parsed) continue;
+          patches[g.id] = {
+            ...patches[g.id],
+            designers: parsed.designers?.length ? parsed.designers : g.designers,
+            artists: parsed.artists?.length ? parsed.artists : g.artists,
+            categories: parsed.categories?.length ? parsed.categories : g.categories,
+            mechanics: parsed.mechanics?.length ? parsed.mechanics : g.mechanics,
+            playtime: parsed.playtime || g.playtime,
+            weight: parsed.weight !== undefined ? parsed.weight : g.weight,
+            honors: parsed.honors?.length ? parsed.honors : g.honors,
+          };
+        }
+      }
+
+      // 2. Complemento Ludopedia para mecânicas em PT-BR e designers (se habilitado)
+      if (missingLudoMeta.length > 0 && ludoToken && !abortControllerRef.current.signal.aborted) {
+        await processBatchWithConcurrency(
+          missingLudoMeta,
+          5,
+          async (game) => {
+            const meta = await fetchLudopediaGameMetadata(game.ludoId!, ludoToken);
+            if (meta) {
+              const existingPatch = patches[game.id] || {};
+              patches[game.id] = {
+                ...existingPatch,
+                namePt: meta.namePt || game.namePt,
+                mechanicsPt: meta.mechanicsPt?.length ? meta.mechanicsPt : game.mechanicsPt,
+                categories: meta.categories?.length ? meta.categories : (existingPatch.categories || game.categories),
+                themes: meta.themes?.length ? meta.themes : game.themes,
+                designers: meta.designers?.length ? meta.designers : (existingPatch.designers || game.designers),
+                artists: meta.artists?.length ? meta.artists : (existingPatch.artists || game.artists),
+                playtime: existingPatch.playtime || meta.playtime || game.playtime,
+              };
+            }
+            completed++;
+            setBatchProgress({
+              current: completed,
+              total: totalSteps,
+              percentage: Math.round((completed / Math.max(totalSteps, 1)) * 100),
+              currentGameName: game.name,
+              activeApi: 'Ludopedia (Designers & Mecânicas PT-BR)',
+            });
+          },
+          abortControllerRef.current.signal
+        );
+      }
+
+      patchGamesBatch(patches);
+      return Object.keys(patches).length;
+    } catch (e: any) {
+      if (e.message !== 'Operação cancelada pelo usuário') {
+        console.error('Erro ao enriquecer metadados:', e);
+      }
+      patchGamesBatch(patches);
+      return Object.keys(patches).length;
+    } finally {
+      setIsBatchUpdating(false);
+      setBatchProgress(null);
+      abortControllerRef.current = null;
+    }
+  }, [bggToken, ludoToken, patchGamesBatch]);
+
   return {
     games,
     columnMapping,
@@ -1372,6 +1571,8 @@ export function useCollection(user?: User | null) {
     fetchLudoDataForGames,
     fetchComparaDataForGames,
     fetchSleevesForGames,
+    enrichGamesMetadata,
+    patchGamesBatch,
     // Coleções e CRUD
     processExcelUpload,
     fetchBGGCollection,

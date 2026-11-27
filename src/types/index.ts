@@ -12,6 +12,7 @@ export interface GameData {
   isSealed?: boolean; // Rastreamento de conservação (Status: Lacrado / Aberto)
   
   // Dados extras do BGG & Ludopedia & Compara Jogos
+  namePt?: string; // Nome nacional em português (Ludopedia)
   thumbnail?: string;
   image?: string;
   minPlayers?: number;
@@ -25,6 +26,11 @@ export interface GameData {
   playtime?: number; // tempo de partida
   domains?: string[]; // categories/mechanics
   mechanics?: string[]; // mecânicas BGG
+  mechanicsPt?: string[]; // mecânicas em português (Ludopedia)
+  categories?: string[]; // categorias BGG / Ludopedia
+  themes?: string[]; // temas Ludopedia
+  designers?: string[]; // designers / autores do jogo
+  artists?: string[]; // artistas / ilustradores
   honors?: string[]; // prêmios do jogo (boardgamehonor)
   suggestedPlayers?: {
     best?: string[];
@@ -36,6 +42,11 @@ export interface GameData {
   descriptionPt?: string; // sinopse/descrição em português (Ludopedia)
   retailPrice?: number; // menor preço de varejo (Compara Jogos)
   usedPrice?: number; // estimativa de mercado de usados (Compara Jogos)
+
+  // Rastreamento Temporal na Coleção (Retrospectiva)
+  acquiredAt?: string; // Data de entrada na coleção (YYYY-MM-DD)
+  soldAt?: string; // Data de saída/venda da coleção (YYYY-MM-DD)
+  wishlistAt?: string; // Data de adição à lista de desejos (YYYY-MM-DD)
 
   // Dados de Sleeves (Compara Jogos & Rastreamento Pessoal)
   cardSleeves?: CardSleevesData;
@@ -147,5 +158,49 @@ export interface LudopediaPlaysSummary {
   qt_usuarios: number; // Usuários registrados participantes
   qt_nao_usuarios: number; // Não-usuários registrados
 }
+
+export interface LudopediaMeProfile {
+  id_usuario: number;
+  usuario: string;
+  thumb?: string;
+}
+
+export interface LudopediaWishlistItem {
+  ludoId: string;
+  name: string;
+  thumbnail?: string;
+  yearPublished?: number;
+  link?: string;
+}
+
+export type RetrospectiveDrilldownKind = 'games' | 'matches' | 'titles';
+
+export interface RetrospectiveDrilldownData {
+  kind: RetrospectiveDrilldownKind;
+  title: string;
+  subtitle?: string;
+  accentColor?: string;
+  games?: GameData[];
+  matches?: LudopediaMatch[];
+  extraStats?: {
+    label: string;
+    value: string;
+    color?: string;
+  }[];
+  externalLinks?: {
+    label: string;
+    url: string;
+  }[];
+  playerHeader?: {
+    name: string;
+    thumb?: string;
+    totalPlays: number;
+    totalHours: number;
+    userWinsWithPlayer: number;
+    playerWins: number;
+    topGames: { name: string; count: number; thumb?: string }[];
+  };
+}
+
 
 

@@ -582,7 +582,52 @@ export function GameDetailsModal({
                     📦 Lacrado
                   </span>
                 )}
+                {game.acquiredAt && game.acquiredAt !== 'legacy' && (
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      padding: '2px 8px',
+                      borderRadius: '8px',
+                      fontSize: '0.75rem',
+                      color: '#93c5fd',
+                      background: 'rgba(59, 130, 246, 0.14)',
+                      border: '1px solid rgba(59, 130, 246, 0.3)'
+                    }}
+                    title="Data de entrada na coleção"
+                  >
+                    📅 Na estante desde {game.acquiredAt.split('-').reverse().join('/')}
+                  </span>
+                )}
+                {game.soldAt && game.soldAt !== 'legacy' && (
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      padding: '2px 8px',
+                      borderRadius: '8px',
+                      fontSize: '0.75rem',
+                      color: '#fca5a5',
+                      background: 'rgba(239, 68, 68, 0.14)',
+                      border: '1px solid rgba(239, 68, 68, 0.3)'
+                    }}
+                    title="Data de saída / venda"
+                  >
+                    🏷️ Saiu em {game.soldAt.split('-').reverse().join('/')}
+                  </span>
+                )}
               </div>
+              {game.designers && game.designers.length > 0 && (
+                <div style={{ marginTop: '0.45rem', fontSize: '0.82rem', color: 'var(--text-muted)', display: 'flex', flexWrap: 'wrap', gap: '0.4rem', alignItems: 'center' }}>
+                  <span>✏️ Designer(s):</span>
+                  <strong style={{ color: '#e2e8f0' }}>{game.designers.join(', ')}</strong>
+                  {game.artists && game.artists.length > 0 && (
+                    <span style={{ opacity: 0.75 }}>• Arte: {game.artists.slice(0, 3).join(', ')}{game.artists.length > 3 ? ` (+${game.artists.length - 3})` : ''}</span>
+                  )}
+                </div>
+              )}
             </div>
 
             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
